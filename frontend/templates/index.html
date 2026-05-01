@@ -197,48 +197,73 @@
                         <i class="fa-solid fa-arrows-rotate mr-1.5 text-xs"></i>Refresh
                     </button>
                 </div>
+
+                <!-- Stat Cards -->
                 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                    <div class="stat-card"><div class="text-gray-500 text-[11px] font-semibold uppercase tracking-wider mb-2">Total Scans</div><div class="text-3xl font-bold" id="statTotal">—</div></div>
-                    <div class="stat-card"><div class="text-[#e63946] text-[11px] font-semibold uppercase tracking-wider mb-2">Dangerous</div><div class="text-3xl font-bold text-[#e63946]" id="statDanger">—</div></div>
-                    <div class="stat-card"><div class="text-[#e9c46a] text-[11px] font-semibold uppercase tracking-wider mb-2">Suspicious</div><div class="text-3xl font-bold text-[#e9c46a]" id="statSusp">—</div></div>
-                    <div class="stat-card"><div class="text-[#2ec4b6] text-[11px] font-semibold uppercase tracking-wider mb-2">Safe</div><div class="text-3xl font-bold text-[#2ec4b6]" id="statSafe">—</div></div>
+                    <div class="stat-card">
+                        <div class="text-gray-500 text-[11px] font-semibold uppercase tracking-wider mb-2">Total Scans</div>
+                        <div class="text-3xl font-bold" id="statTotal">—</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="text-[#e63946] text-[11px] font-semibold uppercase tracking-wider mb-2">Dangerous</div>
+                        <div class="text-3xl font-bold text-[#e63946]" id="statDanger">—</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="text-[#e9c46a] text-[11px] font-semibold uppercase tracking-wider mb-2">Suspicious</div>
+                        <div class="text-3xl font-bold text-[#e9c46a]" id="statSusp">—</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="text-[#2ec4b6] text-[11px] font-semibold uppercase tracking-wider mb-2">Safe</div>
+                        <div class="text-3xl font-bold text-[#2ec4b6]" id="statSafe">—</div>
+                    </div>
                 </div>
+
+                <!-- Model Performance -->
                 <div class="card p-6 mb-6">
-                    <h2 class="text-base font-bold mb-5 flex items-center gap-2"><i class="fa-solid fa-chart-bar text-[#6e8efb] text-sm"></i>Model Performance</h2>
+                    <h2 class="text-base font-bold mb-5 flex items-center gap-2">
+                        <i class="fa-solid fa-chart-bar text-[#6e8efb] text-sm"></i>
+                        Model Performance
+                    </h2>
                     <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                        <div class="metric-cell"><div class="text-2xl font-bold font-mono" id="mAcc">—</div><div class="text-[10px] text-gray-500 mt-1.5 uppercase tracking-wider">Accuracy</div></div>
-                        <div class="metric-cell"><div class="text-2xl font-bold font-mono" id="mPrec">—</div><div class="text-[10px] text-gray-500 mt-1.5 uppercase tracking-wider">Precision</div></div>
-                        <div class="metric-cell"><div class="text-2xl font-bold font-mono" id="mRec">—</div><div class="text-[10px] text-gray-500 mt-1.5 uppercase tracking-wider">Recall</div></div>
-                        <div class="metric-cell"><div class="text-2xl font-bold font-mono" id="mF1">—</div><div class="text-[10px] text-gray-500 mt-1.5 uppercase tracking-wider">F1 Score</div></div>
-                        <div class="metric-cell"><div class="text-2xl font-bold font-mono" id="mFPR">—</div><div class="text-[10px] text-gray-500 mt-1.5 uppercase tracking-wider">FPR</div></div>
+                        <div class="metric-cell">
+                            <div class="text-2xl font-bold font-mono" id="mAcc">—</div>
+                            <div class="text-[10px] text-gray-500 mt-1.5 uppercase tracking-wider">Accuracy</div>
+                        </div>
+                        <div class="metric-cell">
+                            <div class="text-2xl font-bold font-mono" id="mPrec">—</div>
+                            <div class="text-[10px] text-gray-500 mt-1.5 uppercase tracking-wider">Precision</div>
+                        </div>
+                        <div class="metric-cell">
+                            <div class="text-2xl font-bold font-mono" id="mRec">—</div>
+                            <div class="text-[10px] text-gray-500 mt-1.5 uppercase tracking-wider">Recall</div>
+                        </div>
+                        <div class="metric-cell">
+                            <div class="text-2xl font-bold font-mono" id="mF1">—</div>
+                            <div class="text-[10px] text-gray-500 mt-1.5 uppercase tracking-wider">F1 Score</div>
+                        </div>
+                        <div class="metric-cell">
+                            <div class="text-2xl font-bold font-mono" id="mFPR">—</div>
+                            <div class="text-[10px] text-gray-500 mt-1.5 uppercase tracking-wider">FPR</div>
+                        </div>
                     </div>
                 </div>
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div class="card p-6"><h2 class="text-base font-bold mb-5 flex items-center gap-2"><i class="fa-solid fa-timeline text-purple-400 text-sm"></i>Activity Timeline</h2><div id="timelineBox"><div class="empty-state py-10"><i class="fa-solid fa-chart-line"></i><p class="text-sm">No timeline data yet</p></div></div></div>
-                    <div class="card p-6"><h2 class="text-base font-bold mb-5 flex items-center gap-2"><i class="fa-solid fa-triangle-exclamation text-[#e9c46a] text-sm"></i>False Positives</h2><div id="fpBox"><div class="empty-state py-10"><i class="fa-solid fa-check-double"></i><p class="text-sm">No false positives recorded</p></div></div></div>
+
+                <!-- Recent Scans -->
+                <div class="card p-6">
+                    <h2 class="text-base font-bold mb-5 flex items-center gap-2">
+                        <i class="fa-solid fa-clock-rotate-left text-[#6e8efb] text-sm"></i>
+                        Recent Scans
+                    </h2>
+                    <div id="timelineBox">
+                        <div class="empty-state py-10">
+                            <i class="fa-solid fa-inbox"></i>
+                            <p class="text-sm">No scans yet</p>
+                            <p class="text-[11px] text-gray-600 mt-1">Analyze a URL and it will appear here</p>
+                        </div>
+                    </div>
                 </div>
             </section>
-
-            <!-- ── CAMPAIGNS ── -->
-            <section id="page-campaigns" class="hidden">
-                <div class="flex items-center justify-between mb-8">
-                    <div>
-                        <h1 class="text-3xl font-bold tracking-tight">Campaign Analysis</h1>
-                        <p class="text-gray-500 text-sm mt-1">Clusters of similar URLs identified as potential phishing campaigns</p>
-                    </div>
-                    <button class="text-sm text-gray-400 hover:text-white bg-white/[0.04] px-4 py-2 rounded-lg transition-colors" onclick="loadCampaigns()">
-                        <i class="fa-solid fa-arrows-rotate mr-1.5 text-xs"></i>Refresh
-                    </button>
-                </div>
-                <div id="campaignsList">
-                    <div class="empty-state">
-                        <i class="fa-solid fa-sitemap"></i>
-                        <p class="text-sm">No campaigns detected yet</p>
-                        <p class="text-[11px] text-gray-600 mt-1">When multiple similar URLs are scanned, they will be automatically clustered</p>
-                    </div>
-                </div>
-            </section>
-
+            
             <!-- ── HISTORY ── -->
             <section id="page-history" class="hidden">
                 <div class="flex items-center justify-between mb-8">

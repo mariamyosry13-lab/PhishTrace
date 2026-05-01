@@ -1,28 +1,39 @@
-==================================================
-PhishTrace — SHAP Feature Importance Report
-==================================================
+============================================================
+PhishTrace — Model Evaluation Report
+============================================================
 
- 1. path_length               mean|SHAP| = 0.1252
- 2. num_digits                mean|SHAP| = 0.0962
- 3. num_slashes               mean|SHAP| = 0.0897
- 4. url_length                mean|SHAP| = 0.0639
- 5. hostname_length           mean|SHAP| = 0.0530
- 6. has_https                 mean|SHAP| = 0.0447
- 7. num_hyphens               mean|SHAP| = 0.0270
- 8. num_subdomains            mean|SHAP| = 0.0204
- 9. num_dots                  mean|SHAP| = 0.0170
-10. num_question              mean|SHAP| = 0.0117
-11. num_equals                mean|SHAP| = 0.0072
-12. num_underscores           mean|SHAP| = 0.0070
-13. num_suspicious_words      mean|SHAP| = 0.0038
-14. has_suspicious_word       mean|SHAP| = 0.0036
-15. num_percent               mean|SHAP| = 0.0021
-16. num_at                    mean|SHAP| = 0.0004
-17. has_at_in_url             mean|SHAP| = 0.0004
-18. has_ip                    mean|SHAP| = 0.0002
-19. double_slash              mean|SHAP| = 0.0001
+Best model  : Random Forest
+Test set    : 15,877 samples
 
-Figures saved:
-  - reports/figures/shap_bar.png
-  - reports/figures/shap_summary.png
-  - reports/figures/shap_waterfall_sample.png
+── Best Model Metrics ──────────────────────────────
+  Accuracy   : 0.9497
+  Precision  : 0.9720
+  Recall     : 0.9651
+  F1         : 0.9686
+  AUC        : 0.9817
+  FPR        : 0.1126
+
+── Threshold Configuration ─────────────────────────
+  Dangerous  : score >= 0.75
+  Suspicious : score >= 0.45
+  Cost-optimal threshold: 0.05
+  (FN cost=100, FP cost=1)
+
+── All Models Comparison ───────────────────────────
+  Logistic Regression     F1=0.8260  AUC=0.8891  FPR=0.1626
+  Random Forest           F1=0.9686  AUC=0.9817  FPR=0.1126
+  XGBoost                 F1=0.9601  AUC=0.9859  FPR=0.0751
+
+── Error Analysis Summary ──────────────────────────
+  False Positives analysed : 20
+  False Negatives analysed : 20
+  Details saved to         : reports/error_analysis.csv
+
+── Figures Generated ───────────────────────────────
+  confusion_matrix_<model>.png  — per-model heatmap
+  roc_curves.png                — all models comparison
+  threshold_analysis.png        — P/R/F1 vs threshold
+  threshold_cost.png            — cost-based selection
+  feature_importance_best.png   — tree feature importances
+
+============================================================
