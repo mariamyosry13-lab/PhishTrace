@@ -180,18 +180,17 @@ function renderResults(d) {
     // Store scan data globally for report download
     window._lastScan = d;
 
-    // Show download button
+    // Show download button — inline with the meta pills
     const existingBtn = document.getElementById('downloadReportBtn');
     if (existingBtn) existingBtn.remove();
     const btn = document.createElement('button');
     btn.id = 'downloadReportBtn';
-    btn.className = 'mt-3 text-[12px] text-gray-400 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] px-4 py-2 rounded-lg transition-all flex items-center gap-2';
+    btn.className = 'text-[12px] text-gray-400 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] px-4 py-2 rounded-lg transition-all flex items-center gap-2 flex-shrink-0';
     btn.innerHTML = '<i class="fa-solid fa-file-arrow-down text-[11px]"></i>Download Report';
     btn.onclick = downloadReport;
+    // Insert right after resultThreshold — same flex row
     const threshEl = document.getElementById('resultThreshold');
-    if (threshEl && threshEl.parentElement) {
-        threshEl.parentElement.appendChild(btn);
-    }
+    if (threshEl) threshEl.insertAdjacentElement('afterend', btn);
 }
 
 
