@@ -11,6 +11,9 @@ warnings.filterwarnings("ignore")
 
 # ── Add src to path ─────────────────────────────────────
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+# ✅ FIX: استخدم extract_features مباشرة — بترجع الـ extra features كمان
+# (min_levenshtein, is_typosquat, hostname_entropy, brand_in_subdomain, ...)
 from features.extract import extract_features
 
 app = Flask(__name__,
@@ -22,9 +25,10 @@ CORS(app)
 MODELS_DIR = "models"
 
 # ── Thresholds ──────────────────────────────────────────
-# خفضناهم عشان الـ Suspicious يطلع أكتر
-THRESHOLD_DANGEROUS  = 0.65   # كان 0.75
-THRESHOLD_SUSPICIOUS = 0.35   # كان 0.45
+# ✅ FIX: وحّدنا الـ thresholds مع test_model.py و evaluation_report
+# كانوا 0.65 / 0.35 — وده كان بيخلي Safe URLs تتحسب Suspicious
+THRESHOLD_DANGEROUS  = 0.75   # ✅ متطابق مع الـ tests و evaluation_report
+THRESHOLD_SUSPICIOUS = 0.45   # ✅ متطابق مع الـ tests و evaluation_report
 
 # ── Load models once at startup ─────────────────────────
 print("Loading models...")
@@ -33,7 +37,10 @@ model     = joblib.load(os.path.join(MODELS_DIR, "best_model.pkl"))
 explainer = shap.TreeExplainer(model)
 print("Models loaded ✅")
 
-# ── Feature cols (الأصلية بس — الموديل اتعلم عليها) ────
+# ── Feature cols الأصلية اللي الموديل اتعلم عليها ─────
+# ✅ NOTE: الموديل اتعلم على الـ 19 دول بس
+# الـ extra features (min_levenshtein, is_typosquat, ...) بنستخدمها
+# في rule_based_boost فقط — مش بندخّلها للموديل
 FEATURE_COLS = [
     "url_length","num_dots","num_hyphens","num_underscores","num_slashes",
     "num_at","num_question","num_equals","num_percent","num_digits",
@@ -47,9 +54,12 @@ def rule_based_boost(feats: dict, raw_score: float) -> tuple[float, list[str]]:
     """
     بنضيف signals مبنية على rules فوق الـ ML score.
     بترجع (boosted_score, list of rule reasons).
+
+    ✅ FIX: الـ feats دلوقتي بتيجي من extract_features الكاملة
+    فكل الـ extra features موجودة (is_typosquat, hostname_entropy, ...)
     """
-    boost  = 0.0
-    rules  = []
+    boost = 0.0
+    rules = []
 
     # Typosquatting: قريب جداً من دومين مشهور بس مش هو
     lev = feats.get("min_levenshtein", 99)
@@ -63,6 +73,7 @@ def rule_based_boost(feats: dict, raw_score: float) -> tuple[float, list[str]]:
         rules.append("⚠️ الرابط بيستخدم IP بدل اسم دومين — علامة خطر قوية")
 
     # Brand في subdomain (مش في الـ main domain)
+    # ✅ FIX: كان بيقرأ "brand_in_subdomain" بس ده اسمه في extract.py
     if feats.get("brand_in_subdomain", 0):
         boost += 0.20
         rules.append("⚠️ اسم علامة تجارية مشهورة موجود في الـ subdomain — انتبه")
@@ -139,20 +150,22 @@ def analyze():
     if not url:
         return jsonify({"error": "No URL provided"}), 400
 
-    # استخراج الميزات (الدالة الجديدة بترجع الميزات الإضافية كمان)
-    feats    = extract_features(url)
+    # ✅ FIX: extract_features بترجع كل الـ features الكاملة
+    # (الـ 19 الأصلية + is_typosquat + min_levenshtein + hostname_entropy + ...)
+    feats = extract_features(url)
 
-    # نستخدم بس الـ FEATURE_COLS الأصلية للموديل
+    # ✅ نبعت للموديل الـ 19 feature الأصلية بس
     X        = pd.DataFrame([feats])[FEATURE_COLS]
     X_scaled = scaler.transform(X)
 
     # ML score
     raw_score = float(model.predict_proba(X_scaled)[0][1])
 
-    # Rule-based boost (بيصحح الـ typosquatting والحالات اللي الموديل بيفوت عليها)
+    # ✅ FIX: بنبعت feats الكاملة لـ rule_based_boost
+    # فالـ is_typosquat, hostname_entropy, brand_in_subdomain كلها متاحة
     final_score, rule_reasons = rule_based_boost(feats, raw_score)
 
-    verdict = get_verdict(final_score)
+    verdict      = get_verdict(final_score)
     shap_reasons = get_shap_explanation(X_scaled)
 
     return jsonify({
@@ -161,8 +174,8 @@ def analyze():
         "raw_ml_score" : round(raw_score, 4),
         "percent"      : round(final_score * 100, 1),
         "verdict"      : verdict,
-        "reasons"      : shap_reasons,       # SHAP explanations
-        "rule_alerts"  : rule_reasons,        # Rule-based alerts
+        "reasons"      : shap_reasons,
+        "rule_alerts"  : rule_reasons,
         "features"     : feats
     })
 
