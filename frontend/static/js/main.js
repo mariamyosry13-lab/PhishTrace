@@ -200,134 +200,145 @@ function downloadReport() {
     const d = window._lastScan;
     if (!d) return;
 
-    const score   = Math.round((d.score || 0) * 100);
-    const verdict = d.verdict || 'Unknown';
-    const feats   = d.features || {};
-    const reasons = d.reasons  || [];
-    const now     = new Date().toLocaleString();
+    const score      = Math.round((d.score || 0) * 100);
+    const verdict    = d.verdict || 'Unknown';
+    const feats      = d.features || {};
+    const reasons    = d.reasons  || [];
+    const now        = new Date().toLocaleString();
+    const verdictColor = { Dangerous:'#e63946', Suspicious:'#e9c46a', Safe:'#2ec4b6' }[verdict] || '#888';
+    const verdictText  = verdict === 'Safe' ? 'Likely Safe' : verdict;
 
-    const verdictColor = {
-        Dangerous:  '#e63946',
-        Suspicious: '#e9c46a',
-        Safe:       '#2ec4b6',
-    }[verdict] || '#888';
-
-    const featRows = Object.entries(feats)
-        .filter(([, v]) => v !== undefined && v !== null)
-        .map(([k, v]) => `
-            <tr>
-                <td style="padding:6px 10px;border-bottom:1px solid #eee;color:#555;font-size:12px">${k}</td>
-                <td style="padding:6px 10px;border-bottom:1px solid #eee;font-weight:500;font-size:12px">${v}</td>
-            </tr>`).join('');
-
+    // ── SHAP rows ─────────────────────────────────────────
     const shapRows = reasons.map(r => {
-        const isRisk  = r.contribution > 0;
-        const barW    = Math.min(Math.abs(r.contribution) * 400, 100);
-        const barCol  = isRisk ? '#e63946' : '#2ec4b6';
-        return `
-            <tr>
-                <td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:12px;font-family:monospace">${r.feature}</td>
-                <td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:11px;color:#666">${r.text_en || r.feature}</td>
-                <td style="padding:7px 10px;border-bottom:1px solid #eee">
-                    <div style="background:#f0f0f0;border-radius:4px;height:10px;width:120px">
-                        <div style="background:${barCol};height:100%;border-radius:4px;width:${barW}%"></div>
-                    </div>
-                </td>
-                <td style="padding:7px 10px;border-bottom:1px solid #eee;font-weight:600;font-size:12px;color:${barCol};font-family:monospace">
-                    ${isRisk ? '+' : ''}${r.contribution.toFixed(4)}
-                </td>
-            </tr>`;
+        const isRisk = r.contribution > 0;
+        const barW   = Math.min(Math.abs(r.contribution) * 400, 100);
+        const barCol = isRisk ? '#e63946' : '#2ec4b6';
+        return `<tr>
+            <td style="padding:7px 10px;border-bottom:1px solid #f0f0f0;font-size:12px;font-family:monospace;font-weight:500">${r.feature}</td>
+            <td style="padding:7px 10px;border-bottom:1px solid #f0f0f0;font-size:11px;color:#666">${r.text_en || ''}</td>
+            <td style="padding:7px 10px;border-bottom:1px solid #f0f0f0;width:140px">
+                <div style="background:#f0f0f0;border-radius:4px;height:8px">
+                    <div style="background:${barCol};height:100%;border-radius:4px;width:${barW}%"></div>
+                </div>
+            </td>
+            <td style="padding:7px 10px;border-bottom:1px solid #f0f0f0;font-weight:700;font-size:12px;color:${barCol};font-family:monospace;text-align:right">
+                ${isRisk ? '+' : ''}${r.contribution.toFixed(4)}
+            </td>
+        </tr>`;
+    }).join('');
+
+    // ── Features grid — all entries as 3-column grid cards ─
+    const featEntries = Object.entries(feats).filter(([,v]) => v !== undefined && v !== null);
+    const featCards = featEntries.map(([k, v]) => {
+        const isBad = (k === 'has_ip' && v) || (k === 'has_suspicious_word' && v) ||
+                      (k === 'has_at_in_url' && v) || (k === 'double_slash' && v) ||
+                      (k === 'num_subdomains' && v >= 3) || (k === 'num_hyphens' && v >= 2) ||
+                      (k === 'url_length' && v > 75) || (k === 'num_suspicious_words' && v >= 2);
+        const isGood = k === 'has_https' && v;
+        const dot    = isBad ? '#e63946' : isGood ? '#2ec4b6' : '#ccc';
+        return `<div style="padding:8px 12px;border:1px solid #f0f0f0;border-radius:8px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <div style="display:flex;align-items:center;gap:6px">
+                <div style="width:7px;height:7px;border-radius:50%;background:${dot};flex-shrink:0"></div>
+                <span style="font-size:11px;color:#666">${k}</span>
+            </div>
+            <span style="font-size:12px;font-weight:600;font-family:monospace;color:#1a1a1a">${v}</span>
+        </div>`;
     }).join('');
 
     const html = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
-<title>PhishTrace Report — ${d.url}</title>
+<title>PhishTrace Report</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; color: #1a1a1a; background: #fff; padding: 32px; }
-  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; padding-bottom: 18px; border-bottom: 2px solid #f0f0f0; }
-  .logo { display: flex; align-items: center; gap: 10px; }
-  .logo-icon { width: 36px; height: 36px; background: linear-gradient(135deg,#e63946,#a4161a); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: white; font-size: 16px; }
-  .logo-text { font-size: 20px; font-weight: 700; color: #1a1a1a; }
-  .meta { font-size: 11px; color: #999; text-align: right; }
-  .verdict-box { background: #fafafa; border: 1.5px solid #eee; border-radius: 12px; padding: 20px 24px; margin-bottom: 20px; display: flex; align-items: center; gap: 20px; }
-  .score-circle { width: 80px; height: 80px; border-radius: 50%; border: 5px solid ${verdictColor}; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-  .score-num { font-size: 22px; font-weight: 700; color: ${verdictColor}; }
-  .verdict-label { font-size: 20px; font-weight: 700; color: ${verdictColor}; margin-bottom: 4px; }
-  .url-text { font-size: 12px; color: #555; font-family: monospace; word-break: break-all; margin-bottom: 6px; }
-  .meta-pills { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
-  .pill { font-size: 10px; padding: 2px 10px; border-radius: 10px; background: #f0f0f0; color: #555; }
-  .section { margin-bottom: 20px; }
-  .section-title { font-size: 13px; font-weight: 600; color: #333; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 6px; }
-  table { width: 100%; border-collapse: collapse; }
-  th { text-align: left; padding: 8px 10px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #999; font-weight: 600; border-bottom: 1px solid #eee; }
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .feat-col table { border: 1px solid #f0f0f0; border-radius: 8px; overflow: hidden; }
-  .footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid #f0f0f0; font-size: 10px; color: #bbb; text-align: center; }
-  .campaign-badge { display: inline-block; padding: 3px 12px; border-radius: 20px; background: rgba(233,196,106,0.12); color: #b08a00; border: 1px solid rgba(233,196,106,0.3); font-size: 11px; font-weight: 600; margin-top: 6px; }
-  @media print { body { padding: 16px; } }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',Arial,sans-serif;color:#1a1a1a;background:#fff;padding:32px;max-width:900px;margin:0 auto}
+  .header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding-bottom:16px;border-bottom:2px solid #f0f0f0}
+  .logo-row{display:flex;align-items:center;gap:10px}
+  .logo-icon{width:38px;height:38px;background:linear-gradient(135deg,#e63946,#a4161a);border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px}
+  .logo-name{font-size:20px;font-weight:700}
+  .logo-sub{font-size:10px;color:#aaa;margin-top:1px}
+  .report-meta{font-size:11px;color:#aaa;text-align:right;line-height:1.8}
+  .verdict-box{display:flex;align-items:center;gap:20px;padding:20px 24px;background:#fafafa;border:1.5px solid #eee;border-radius:14px;margin-bottom:20px}
+  .score-ring{width:76px;height:76px;border-radius:50%;border:5px solid ${verdictColor};display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .score-num{font-size:22px;font-weight:700;color:${verdictColor}}
+  .verdict-name{font-size:22px;font-weight:700;color:${verdictColor};margin-bottom:4px}
+  .verdict-url{font-size:11px;font-family:monospace;color:#555;word-break:break-all;margin-bottom:8px}
+  .pills{display:flex;gap:6px;flex-wrap:wrap}
+  .pill{font-size:10px;padding:2px 10px;border-radius:10px;background:#f0f0f0;color:#555}
+  .pill-warn{background:rgba(233,196,106,0.12);color:#a07800;border:1px solid rgba(233,196,106,0.3)}
+  .section{margin-bottom:22px}
+  .sec-title{font-size:13px;font-weight:600;color:#333;padding-bottom:8px;border-bottom:1px solid #f0f0f0;margin-bottom:12px}
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#aaa;font-weight:600;border-bottom:1px solid #eee;background:#fafafa}
+  .feat-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  .footer{margin-top:24px;padding-top:14px;border-top:1px solid #f0f0f0;font-size:10px;color:#bbb;text-align:center;line-height:1.8}
+  @media print{body{padding:16px}}
 </style>
 </head>
 <body>
 
 <div class="header">
-  <div class="logo">
+  <div class="logo-row">
     <div class="logo-icon">🛡</div>
     <div>
-      <div class="logo-text">PhishTrace</div>
-      <div style="font-size:10px;color:#999">AI-Powered Phishing Detection & Campaign Analysis</div>
+      <div class="logo-name">PhishTrace</div>
+      <div class="logo-sub">AI-Powered Phishing Detection & Campaign Analysis</div>
     </div>
   </div>
-  <div class="meta">
+  <div class="report-meta">
     <div>Generated: ${now}</div>
     ${d.scan_id ? `<div>Scan ID: #${d.scan_id}</div>` : ''}
-    <div>Model: Random Forest · Threshold: 0.75 / 0.45</div>
+    <div>Model: Random Forest &nbsp;·&nbsp; Threshold: 0.75 / 0.45</div>
   </div>
 </div>
 
 <div class="verdict-box">
-  <div class="score-circle"><div class="score-num">${score}%</div></div>
+  <div class="score-ring"><div class="score-num">${score}%</div></div>
   <div style="flex:1">
-    <div class="verdict-label">${verdict === 'Safe' ? 'Likely Safe' : verdict}</div>
-    <div class="url-text">${d.url}</div>
-    <div class="meta-pills">
+    <div class="verdict-name">${verdictText}</div>
+    <div class="verdict-url">${d.url}</div>
+    <div class="pills">
       <span class="pill">Risk Score: ${score}%</span>
       <span class="pill">SHAP Explainability</span>
-      ${d.campaign_id ? `<span class="pill" style="background:rgba(233,196,106,0.1);color:#b08a00">Campaign: ${d.campaign_id}</span>` : ''}
+      <span class="pill">Random Forest</span>
+      ${d.campaign_id ? `<span class="pill pill-warn">⚑ ${d.campaign_id}</span>` : ''}
     </div>
   </div>
 </div>
 
 <div class="section">
-  <div class="section-title">📊 Decision Explanation (SHAP)</div>
+  <div class="sec-title">📊 Decision Explanation (SHAP) — Top ${reasons.length} Features</div>
   <table>
-    <thead><tr><th>Feature</th><th>Explanation</th><th>Impact</th><th>Value</th></tr></thead>
+    <thead><tr><th style="width:160px">Feature</th><th>Why it matters</th><th style="width:140px">Impact</th><th style="width:90px;text-align:right">SHAP Value</th></tr></thead>
     <tbody>${shapRows}</tbody>
   </table>
 </div>
 
 <div class="section">
-  <div class="section-title">🔬 Extracted Features</div>
-  <div class="grid2">
-    <div class="feat-col"><table><tbody>${featRows.slice(0, Math.ceil(Object.keys(feats).length / 2))}</tbody></table></div>
-    <div class="feat-col"><table><tbody>${featRows.slice(Math.ceil(Object.keys(feats).length / 2))}</tbody></table></div>
-  </div>
+  <div class="sec-title">🔬 Extracted Features (${featEntries.length} total)</div>
+  <div class="feat-grid">${featCards}</div>
 </div>
 
 <div class="footer">
-  PhishTrace — Graduation Project · Faculty of Engineering · Random Forest F1=96.86% AUC=98.17%
+  PhishTrace &nbsp;·&nbsp; Graduation Project &nbsp;·&nbsp; Faculty of Engineering<br>
+  Random Forest &nbsp;·&nbsp; F1 = 96.86% &nbsp;·&nbsp; AUC = 98.17% &nbsp;·&nbsp; Test Set: 15,877 samples
 </div>
 
 </body></html>`;
 
-    // Open in new tab and trigger print dialog
-    const win = window.open('', '_blank');
-    win.document.write(html);
-    win.document.close();
-    setTimeout(() => win.print(), 600);
+    // Direct download as HTML file (no print dialog)
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    const safeName = (d.url || 'report').replace(/[^a-zA-Z0-9]/g, '_').slice(0, 40);
+    a.href     = url;
+    a.download = `PhishTrace_${safeName}_${Date.now()}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Report downloaded', 'success');
 }
+
 
 function renderFeatures(f) {
     const grid = document.getElementById('featuresGrid');
