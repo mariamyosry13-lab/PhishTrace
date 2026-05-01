@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhishTrace — AI-Powered Phishing Detection & Campaign Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Space Grotesk', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                }
+            }
+        }
+    </script>
+</head>
+<body class="min-h-screen">
+    <div class="bg-grid"></div>
+    <div class="bg-orb bg-orb-1"></div>
+    <div class="bg-orb bg-orb-2"></div>
+    <div class="bg-orb bg-orb-3"></div>
+
+    <div class="toast-wrap" id="toastWrap"></div>
+
+    <div class="relative z-10">
+
+        <!-- ── HEADER ── -->
+        <header class="border-b border-white/[0.04] backdrop-blur-xl bg-[#05080f]/70 sticky top-0 z-50">
+            <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-[#e63946] to-[#a4161a] flex items-center justify-center shadow-lg shadow-red-900/20">
+                        <i class="fa-solid fa-shield-halved text-white text-sm"></i>
+                    </div>
+                    <span class="font-bold text-[17px] tracking-tight">PhishTrace</span>
+                </div>
+                <nav class="hidden md:flex items-center gap-1" id="desktopNav">
+                    <button class="tab-btn active" data-page="scanner" onclick="navigateTo('scanner')">
+                        <i class="fa-solid fa-crosshairs mr-2 text-xs"></i>Scanner
+                    </button>
+                    <button class="tab-btn" data-page="dashboard" onclick="navigateTo('dashboard')">
+                        <i class="fa-solid fa-chart-pie mr-2 text-xs"></i>Dashboard
+                    </button>
+                    <button class="tab-btn" data-page="campaigns" onclick="navigateTo('campaigns')">
+                        <i class="fa-solid fa-diagram-project mr-2 text-xs"></i>Campaigns
+                    </button>
+                    <button class="tab-btn" data-page="history" onclick="navigateTo('history')">
+                        <i class="fa-solid fa-clock-rotate-left mr-2 text-xs"></i>History
+                    </button>
+                </nav>
+                <div class="flex items-center gap-4">
+                    <div class="flex items-center gap-2">
+                        <div class="w-[7px] h-[7px] rounded-full bg-[#2ec4b6] animate-pulse" id="connDot"></div>
+                        <span class="text-[11px] text-gray-500 hidden sm:inline" id="connText">Connected</span>
+                    </div>
+                    <button class="md:hidden w-9 h-9 rounded-lg bg-white/5 flex items-center justify-center" onclick="toggleMobile()" aria-label="Menu">
+                        <i class="fa-solid fa-bars text-sm"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="md:hidden hidden border-t border-white/[0.04] px-4 pb-3 pt-2 space-y-0.5" id="mobileNav">
+                <button class="block w-full text-left px-4 py-3 rounded-lg text-sm hover:bg-white/5 transition-colors" onclick="navigateTo('scanner');toggleMobile()"><i class="fa-solid fa-crosshairs mr-2 text-xs"></i>Scanner</button>
+                <button class="block w-full text-left px-4 py-3 rounded-lg text-sm hover:bg-white/5 transition-colors" onclick="navigateTo('dashboard');toggleMobile()"><i class="fa-solid fa-chart-pie mr-2 text-xs"></i>Dashboard</button>
+                <button class="block w-full text-left px-4 py-3 rounded-lg text-sm hover:bg-white/5 transition-colors" onclick="navigateTo('campaigns');toggleMobile()"><i class="fa-solid fa-diagram-project mr-2 text-xs"></i>Campaigns</button>
+                <button class="block w-full text-left px-4 py-3 rounded-lg text-sm hover:bg-white/5 transition-colors" onclick="navigateTo('history');toggleMobile()"><i class="fa-solid fa-clock-rotate-left mr-2 text-xs"></i>History</button>
+            </div>
+        </header>
+
+        <main class="max-w-7xl mx-auto px-6 py-10">
+
+            <!-- ── SCANNER ── -->
+            <section id="page-scanner">
+                <div class="text-center mb-12">
+                    <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/[0.03] border border-white/[0.06] text-xs text-gray-400 mb-6">
+                        <i class="fa-solid fa-bolt text-[#e9c46a]"></i>
+                        Powered by ML-based classification with SHAP explainability
+                    </div>
+                    <h1 class="text-4xl sm:text-5xl lg:text-[3.4rem] font-bold mb-5 leading-[1.15] tracking-tight">
+                        AI-Powered Phishing<br>
+                        <span class="text-transparent bg-clip-text bg-gradient-to-r from-[#e63946] via-[#e76f51] to-[#e9c46a]">Detection</span>
+                    </h1>
+                    <p class="text-gray-400 text-lg max-w-xl mx-auto leading-relaxed">
+                        Paste a URL or email to analyze — the system extracts features, classifies risk, and explains exactly why.
+                    </p>
+                </div>
+
+                <div class="max-w-3xl mx-auto mb-7">
+                    <div class="relative">
+                        <input type="text" id="urlInput" class="url-input" placeholder="Paste a URL or email address..." autocomplete="off" spellcheck="false" onkeydown="if(event.key==='Enter')analyzeURL()">
+                        <div class="absolute right-5 top-1/2 -translate-y-1/2 text-gray-600">
+                            <i class="fa-solid fa-link text-sm"></i>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between mt-3">
+                        <div class="flex items-center gap-2 text-[11px] text-gray-600">
+                            <i class="fa-solid fa-lock text-[9px]"></i>
+                            Analysis runs locally — no data sent to third parties
+                        </div>
+                        <button class="text-[11px] text-gray-600 hover:text-gray-400 transition-colors" onclick="clearInput()">Clear</button>
+                    </div>
+                </div>
+
+                <div class="text-center mb-14">
+                    <button class="btn-analyze" id="analyzeBtn" onclick="analyzeURL()">
+                        <span class="shimmer"></span>
+                        <span id="analyzeBtnText"><i class="fa-solid fa-crosshairs mr-2"></i>Analyze</span>
+                    </button>
+                </div>
+
+                <!-- Loading -->
+                <div class="hidden max-w-md mx-auto text-center" id="loadingState">
+                    <div class="scan-ring mx-auto mb-6">
+                        <svg viewBox="0 0 120 120" width="120" height="120">
+                            <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(230,57,70,0.08)" stroke-width="3"/>
+                            <circle cx="60" cy="60" r="52" fill="none" stroke="#e63946" stroke-width="3" stroke-dasharray="80 240" stroke-linecap="round"/>
+                        </svg>
+                        <div class="inner-icon"><i class="fa-solid fa-shield-halved text-[#e63946] text-2xl"></i></div>
+                    </div>
+                    <p class="text-gray-200 font-semibold mb-2">Analyzing URL</p>
+                    <div class="dot-typing"><span></span><span></span><span></span></div>
+                    <p class="text-gray-500 text-sm mt-4" id="loadingStep">Extracting features...</p>
+                </div>
+
+                <!-- Results -->
+                <div class="hidden" id="resultsSection">
+                    <div class="card p-8 mb-6 fade-up" id="resultCard">
+                        <div class="flex flex-col md:flex-row items-center gap-8">
+                            <div class="score-ring flex-shrink-0" id="scoreRing">
+                                <svg viewBox="0 0 190 190" width="190" height="190">
+                                    <circle class="track" cx="95" cy="95" r="80"/>
+                                    <circle class="progress" id="scoreArc" cx="95" cy="95" r="80"/>
+                                </svg>
+                                <div class="score-text">
+                                    <span class="text-4xl font-bold font-mono" id="scoreValue">—</span>
+                                    <span class="text-[11px] text-gray-500 mt-1">Risk Score</span>
+                                </div>
+                            </div>
+                            <div class="flex-1 text-center md:text-left">
+                                <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold mb-3" id="resultBadge">
+                                    <i id="resultIcon"></i>
+                                    <span id="resultLabel">—</span>
+                                </div>
+                                <p class="text-gray-400 text-sm leading-relaxed max-w-lg" id="resultSummary">—</p>
+                                <div class="flex flex-wrap gap-3 mt-5 justify-center md:justify-start">
+                                    <div class="text-[11px] text-gray-500 bg-white/[0.03] px-3 py-1.5 rounded-lg" id="resultModel"><i class="fa-solid fa-brain mr-1"></i>Model: —</div>
+                                    <div class="text-[11px] text-gray-500 bg-white/[0.03] px-3 py-1.5 rounded-lg" id="resultTime"><i class="fa-solid fa-stopwatch mr-1"></i>Time: —</div>
+                                    <div class="text-[11px] text-gray-500 bg-white/[0.03] px-3 py-1.5 rounded-lg" id="resultThreshold"><i class="fa-solid fa-sliders mr-1"></i>Threshold: —</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card p-6 mb-6 fade-up" id="featuresCard">
+                        <h2 class="text-base font-bold mb-5 flex items-center gap-2">
+                            <i class="fa-solid fa-microscope text-[#e63946] text-sm"></i>
+                            Extracted Features
+                        </h2>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3" id="featuresGrid"></div>
+                    </div>
+
+                    <div class="card p-6 mb-6 fade-up" id="explainCard">
+                        <div class="flex items-center justify-between mb-5">
+                            <h2 class="text-base font-bold flex items-center gap-2">
+                                <i class="fa-solid fa-lightbulb text-[#e9c46a] text-sm"></i>
+                                Decision Explanation
+                            </h2>
+                            <span class="text-[10px] px-2.5 py-1 rounded-md bg-white/[0.04] text-gray-400 font-mono" id="explainMethod">SHAP</span>
+                        </div>
+                        <p class="text-gray-400 text-sm mb-5 leading-relaxed" id="explainSummary">—</p>
+                        <div class="space-y-3.5" id="contributionsList"></div>
+                    </div>
+
+                    <div class="card p-6 fade-up" id="detailsCard">
+                        <h2 class="text-base font-bold mb-5 flex items-center gap-2">
+                            <i class="fa-solid fa-terminal text-[#6e8efb] text-sm"></i>
+                            Technical Details
+                        </h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="detailsGrid"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── DASHBOARD ── -->
+            <section id="page-dashboard" class="hidden">
+                <div class="flex items-center justify-between mb-8">
+                    <div>
+                        <h1 class="text-3xl font-bold tracking-tight">Dashboard</h1>
+                        <p class="text-gray-500 text-sm mt-1">System performance overview and scan activity</p>
+                    </div>
+                    <button class="text-sm text-gray-400 hover:text-white bg-white/[0.04] px-4 py-2 rounded-lg transition-colors" onclick="loadDashboard()">
+                        <i class="fa-solid fa-arrows-rotate mr-1.5 text-xs"></i>Refresh
+                    </button>
+                </div>
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                    <div class="stat-card"><div class="text-gray-500 text-[11px] font-semibold uppercase tracking-wider mb-2">Total Scans</div><div class="text-3xl font-bold" id="statTotal">—</div></div>
+                    <div class="stat-card"><div class="text-[#e63946] text-[11px] font-semibold uppercase tracking-wider mb-2">Dangerous</div><div class="text-3xl font-bold text-[#e63946]" id="statDanger">—</div></div>
+                    <div class="stat-card"><div class="text-[#e9c46a] text-[11px] font-semibold uppercase tracking-wider mb-2">Suspicious</div><div class="text-3xl font-bold text-[#e9c46a]" id="statSusp">—</div></div>
+                    <div class="stat-card"><div class="text-[#2ec4b6] text-[11px] font-semibold uppercase tracking-wider mb-2">Safe</div><div class="text-3xl font-bold text-[#2ec4b6]" id="statSafe">—</div></div>
+                </div>
+                <div class="card p-6 mb-6">
+                    <h2 class="text-base font-bold mb-5 flex items-center gap-2"><i class="fa-solid fa-chart-bar text-[#6e8efb] text-sm"></i>Model Performance</h2>
+                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                        <div class="metric-cell"><div class="text-2xl font-bold font-mono" id="mAcc">—</div><div class="text-[10px] text-gray-500 mt-1.5 uppercase tracking-wider">Accuracy</div></div>
+                        <div class="metric-cell"><div class="text-2xl font-bold font-mono" id="mPrec">—</div><div class="text-[10px] text-gray-500 mt-1.5 uppercase tracking-wider">Precision</div></div>
+                        <div class="metric-cell"><div class="text-2xl font-bold font-mono" id="mRec">—</div><div class="text-[10px] text-gray-500 mt-1.5 uppercase tracking-wider">Recall</div></div>
+                        <div class="metric-cell"><div class="text-2xl font-bold font-mono" id="mF1">—</div><div class="text-[10px] text-gray-500 mt-1.5 uppercase tracking-wider">F1 Score</div></div>
+                        <div class="metric-cell"><div class="text-2xl font-bold font-mono" id="mFPR">—</div><div class="text-[10px] text-gray-500 mt-1.5 uppercase tracking-wider">FPR</div></div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="card p-6"><h2 class="text-base font-bold mb-5 flex items-center gap-2"><i class="fa-solid fa-timeline text-purple-400 text-sm"></i>Activity Timeline</h2><div id="timelineBox"><div class="empty-state py-10"><i class="fa-solid fa-chart-line"></i><p class="text-sm">No timeline data yet</p></div></div></div>
+                    <div class="card p-6"><h2 class="text-base font-bold mb-5 flex items-center gap-2"><i class="fa-solid fa-triangle-exclamation text-[#e9c46a] text-sm"></i>False Positives</h2><div id="fpBox"><div class="empty-state py-10"><i class="fa-solid fa-check-double"></i><p class="text-sm">No false positives recorded</p></div></div></div>
+                </div>
+            </section>
+
+            <!-- ── CAMPAIGNS ── -->
+            <section id="page-campaigns" class="hidden">
+                <div class="flex items-center justify-between mb-8">
+                    <div>
+                        <h1 class="text-3xl font-bold tracking-tight">Campaign Analysis</h1>
+                        <p class="text-gray-500 text-sm mt-1">Clusters of similar URLs identified as potential phishing campaigns</p>
+                    </div>
+                    <button class="text-sm text-gray-400 hover:text-white bg-white/[0.04] px-4 py-2 rounded-lg transition-colors" onclick="loadCampaigns()">
+                        <i class="fa-solid fa-arrows-rotate mr-1.5 text-xs"></i>Refresh
+                    </button>
+                </div>
+                <div id="campaignsList">
+                    <div class="empty-state">
+                        <i class="fa-solid fa-sitemap"></i>
+                        <p class="text-sm">No campaigns detected yet</p>
+                        <p class="text-[11px] text-gray-600 mt-1">When multiple similar URLs are scanned, they will be automatically clustered</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── HISTORY ── -->
+            <section id="page-history" class="hidden">
+                <div class="flex items-center justify-between mb-8">
+                    <div>
+                        <h1 class="text-3xl font-bold tracking-tight">Scan History</h1>
+                        <p class="text-gray-500 text-sm mt-1">All previously analyzed URLs</p>
+                    </div>
+                    <button class="text-sm text-gray-400 hover:text-white bg-white/[0.04] px-4 py-2 rounded-lg transition-colors" onclick="loadHistory()">
+                        <i class="fa-solid fa-arrows-rotate mr-1.5 text-xs"></i>Refresh
+                    </button>
+                </div>
+                <div class="card overflow-hidden" id="historyTableWrap">
+                    <div class="empty-state">
+                        <i class="fa-solid fa-inbox"></i>
+                        <p class="text-sm">History is empty</p>
+                        <p class="text-[11px] text-gray-600 mt-1">Scan a URL and it will appear here</p>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+
+        <footer class="border-t border-white/[0.04] mt-20 py-8 text-center text-[11px] text-gray-600">
+            <p>PhishTrace — AI-Powered Phishing Detection & Campaign Analysis</p>
+            <p class="mt-1">Graduation Project — Faculty of Engineering</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
