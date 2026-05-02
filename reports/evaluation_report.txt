@@ -6,12 +6,12 @@ Best model  : Random Forest
 Test set    : 15,877 samples
 
 ── Best Model Metrics ──────────────────────────────
-  Accuracy   : 0.9497
-  Precision  : 0.9720
-  Recall     : 0.9651
-  F1         : 0.9686
-  AUC        : 0.9817
-  FPR        : 0.1126
+  Accuracy   : 0.9409
+  Precision  : 0.9782
+  Recall     : 0.9474
+  F1         : 0.9625
+  AUC        : 0.9844
+  FPR        : 0.0856
 
 ── Threshold Configuration ─────────────────────────
   Dangerous  : score >= 0.75
@@ -20,20 +20,20 @@ Test set    : 15,877 samples
   (FN cost=100, FP cost=1)
 
 ── All Models Comparison ───────────────────────────
-  Logistic Regression     F1=0.8260  AUC=0.8891  FPR=0.1626
-  Random Forest           F1=0.9686  AUC=0.9817  FPR=0.1126
-  XGBoost                 F1=0.9601  AUC=0.9859  FPR=0.0751
+  Logistic Regression     F1=0.8187  AUC=0.8884  FPR=0.1632
+  Random Forest           F1=0.9625  AUC=0.9844  FPR=0.0856
+  XGBoost                 F1=0.9549  AUC=0.9843  FPR=0.0738
 
 ── Error Analysis Summary ──────────────────────────
-  False Positives analysed : 20
-  False Negatives analysed : 20
-  Details saved to         : reports/error_analysis.csv
+  False Positives : 20
+  False Negatives : 20
+  Details         : reports/error_analysis.csv
 
 ── Figures Generated ───────────────────────────────
-  confusion_matrix_<model>.png  — per-model heatmap
-  roc_curves.png                — all models comparison
-  threshold_analysis.png        — P/R/F1 vs threshold
-  threshold_cost.png            — cost-based selection
-  feature_importance_best.png   — tree feature importances
+  confusion_matrix_<model>.png
+  roc_curves.png
+  threshold_analysis.png
+  threshold_cost.png
+  feature_importance_best.png
 
 ============================================================

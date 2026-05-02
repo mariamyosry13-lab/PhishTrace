@@ -4,27 +4,23 @@ PhishTrace — Model Evaluation Script
 Produces ALL evaluation artefacts in one run:
 
   reports/figures/
-    ├── confusion_matrix_<model>.png   — per-model heatmap
-    ├── roc_curves.png                 — all 3 models on one plot
-    ├── threshold_analysis.png         — P / R / F1 vs threshold
-    ├── threshold_cost.png             — cost-based threshold selection
-    └── feature_importance_best.png    — tree feature importances
+    ├── confusion_matrix_<model>.png
+    ├── roc_curves.png
+    ├── threshold_analysis.png
+    ├── threshold_cost.png
+    └── feature_importance_best.png
 
   reports/
-    ├── error_analysis.csv             — 20 FP + 20 FN with SHAP reasons
-    └── evaluation_report.txt          — human-readable summary
+    ├── error_analysis.csv
+    └── evaluation_report.txt
 
   models/
-    └── evaluation_results.json        — machine-readable metrics (used by DB seed)
+    └── evaluation_results.json
 
 Usage
 -----
   cd <project_root>
   python src/models/evaluate.py
-
-Requirements
-------------
-  pip install scikit-learn xgboost shap matplotlib seaborn pandas numpy joblib
 """
 
 import os
@@ -58,12 +54,13 @@ REPORTS_DIR  = ROOT / "reports"
 FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
+# ✅ FIX: 18 features — شيلنا "has_suspicious_word" (كانت redundant)
 FEATURE_COLS = [
-    "url_length","num_dots","num_hyphens","num_underscores","num_slashes",
-    "num_at","num_question","num_equals","num_percent","num_digits",
-    "has_ip","has_https","has_suspicious_word","num_subdomains",
-    "hostname_length","path_length","double_slash","has_at_in_url",
-    "num_suspicious_words",
+    "url_length", "num_dots", "num_hyphens", "num_underscores", "num_slashes",
+    "num_at", "num_question", "num_equals", "num_percent", "num_digits",
+    "has_ip", "has_https", "num_subdomains",
+    "hostname_length", "path_length", "double_slash", "has_at_in_url",
+    "num_suspicious_words"
 ]
 
 MODEL_FILES = {
@@ -78,26 +75,30 @@ THRESHOLD_SUSPICIOUS = 0.45
 # ── Load data & scaler ────────────────────────────────────────────────────────
 print("Loading data...")
 df = pd.read_csv(FEATURES_CSV)
-X  = df[FEATURE_COLS].values
-y  = df["label"].values
+
+missing = [c for c in FEATURE_COLS if c not in df.columns]
+if missing:
+    raise ValueError(f"Missing columns: {missing}\nRun extract.py then train.py first.")
+
+X = df[FEATURE_COLS].values
+y = df["label"].values
 
 scaler = joblib.load(MODELS_DIR / "scaler.pkl")
 
-# Reproduce the same train/test split used in train.py (stratified, seed=42)
 from sklearn.model_selection import train_test_split
 _, X_test_raw, _, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42, stratify=y
 )
 X_test = scaler.transform(X_test_raw)
-print(f"Test set: {len(y_test)} samples  |  Phishing: {y_test.sum()}  |  Legit: {(y_test==0).sum()}")
+print(f"Test set: {len(y_test)} | Phishing: {y_test.sum()} | Legit: {(y_test==0).sum()}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  1. Per-model metrics + confusion matrices
 # ═══════════════════════════════════════════════════════════════════════════════
 print("\n── Per-model evaluation ─────────────────────────────────────────────────")
-all_results   = {}
-all_fpr_tpr   = {}
+all_results = {}
+all_fpr_tpr = {}
 
 for model_name, model_file in MODEL_FILES.items():
     model_path = MODELS_DIR / model_file
@@ -111,8 +112,8 @@ for model_name, model_file in MODEL_FILES.items():
 
     acc  = accuracy_score(y_test, y_pred)
     prec = precision_score(y_test, y_pred, zero_division=0)
-    rec  = recall_score(y_test, y_pred, zero_division=0)
-    f1   = f1_score(y_test, y_pred, zero_division=0)
+    rec  = recall_score(y_test,    y_pred, zero_division=0)
+    f1   = f1_score(y_test,        y_pred, zero_division=0)
 
     fp   = int(((y_pred == 1) & (y_test == 0)).sum())
     fn_  = int(((y_pred == 0) & (y_test == 1)).sum())
@@ -138,10 +139,9 @@ for model_name, model_file in MODEL_FILES.items():
     print(f"    Recall   : {rec:.4f}  |  F1:        {f1:.4f}")
     print(f"    AUC      : {roc_auc:.4f}  |  FPR:       {fpr_:.4f}")
 
-    # Confusion matrix heatmap
-    cm     = confusion_matrix(y_test, y_pred)
+    cm        = confusion_matrix(y_test, y_pred)
     safe_name = model_name.lower().replace(" ", "_")
-    fig, ax = plt.subplots(figsize=(5, 4))
+    fig, ax   = plt.subplots(figsize=(5, 4))
     sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", ax=ax,
                 xticklabels=["Legit", "Phishing"],
                 yticklabels=["Legit", "Phishing"])
@@ -155,7 +155,7 @@ for model_name, model_file in MODEL_FILES.items():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  2. ROC curves — all models on one plot
+#  2. ROC curves
 # ═══════════════════════════════════════════════════════════════════════════════
 print("\n── ROC curves ───────────────────────────────────────────────────────────")
 fig, ax = plt.subplots(figsize=(7, 5))
@@ -170,7 +170,7 @@ ax.set_xlim([0.0, 1.0])
 ax.set_ylim([0.0, 1.02])
 ax.set_xlabel("False Positive Rate", fontsize=11)
 ax.set_ylabel("True Positive Rate",  fontsize=11)
-ax.set_title("ROC Curves — All Models",  fontsize=12)
+ax.set_title("ROC Curves — All Models", fontsize=12)
 ax.legend(loc="lower right", fontsize=9)
 ax.grid(True, alpha=0.3)
 fig.tight_layout()
@@ -180,10 +180,10 @@ print("  Saved roc_curves.png")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  3. Threshold Analysis — Precision / Recall / F1 vs threshold
+#  3. Threshold Analysis
 # ═══════════════════════════════════════════════════════════════════════════════
 print("\n── Threshold analysis ───────────────────────────────────────────────────")
-best_model = joblib.load(MODELS_DIR / "best_model.pkl")
+best_model  = joblib.load(MODELS_DIR / "best_model.pkl")
 y_prob_best = best_model.predict_proba(X_test)[:, 1]
 
 thresholds = np.linspace(0.05, 0.95, 50)
@@ -194,7 +194,7 @@ for t in thresholds:
     precs.append(precision_score(y_test, y_p, zero_division=0))
     recs.append(recall_score(y_test,    y_p, zero_division=0))
     f1s.append(f1_score(y_test,         y_p, zero_division=0))
-    fp_t  = int(((y_p == 1) & (y_test == 0)).sum())
+    fp_t = int(((y_p == 1) & (y_test == 0)).sum())
     fprs.append(fp_t / max((y_test == 0).sum(), 1))
 
 fig, ax = plt.subplots(figsize=(8, 5))
@@ -203,9 +203,8 @@ ax.plot(thresholds, recs,  label="Recall",    color="#3B6D11", lw=1.8)
 ax.plot(thresholds, f1s,   label="F1",        color="#BA7517", lw=2.2)
 ax.plot(thresholds, fprs,  label="FPR",       color="#A32D2D", lw=1.4, linestyle="--")
 
-# Mark our chosen thresholds
-ax.axvline(THRESHOLD_DANGEROUS,  color="#A32D2D", lw=1,   linestyle=":", alpha=0.8)
-ax.axvline(THRESHOLD_SUSPICIOUS, color="#BA7517", lw=1,   linestyle=":", alpha=0.8)
+ax.axvline(THRESHOLD_DANGEROUS,  color="#A32D2D", lw=1, linestyle=":", alpha=0.8)
+ax.axvline(THRESHOLD_SUSPICIOUS, color="#BA7517", lw=1, linestyle=":", alpha=0.8)
 ax.text(THRESHOLD_DANGEROUS  + 0.01, 0.05, "Dangerous\nthreshold", fontsize=8, color="#A32D2D")
 ax.text(THRESHOLD_SUSPICIOUS + 0.01, 0.05, "Suspicious\nthreshold", fontsize=8, color="#BA7517")
 
@@ -221,11 +220,11 @@ print("  Saved threshold_analysis.png")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  4. Cost-based threshold selection
+#  4. Cost-based threshold
 # ═══════════════════════════════════════════════════════════════════════════════
 print("\n── Cost-based threshold ─────────────────────────────────────────────────")
-FN_COST = 100   # missing a real phishing attack
-FP_COST = 1     # wrongly flagging a safe URL
+FN_COST = 100
+FP_COST = 1
 
 costs       = []
 best_t_cost = None
@@ -244,24 +243,23 @@ for t, f1_val in zip(thresholds, f1s):
 fig, ax = plt.subplots(figsize=(8, 4))
 ax.plot(thresholds, costs, color="#A32D2D", lw=2)
 ax.axvline(best_t_cost, color="#3B6D11", lw=1.5, linestyle="--",
-           label=f"Optimal threshold = {best_t_cost:.2f}  (cost={best_cost:,})")
+           label=f"Optimal = {best_t_cost:.2f}  (cost={best_cost:,})")
 ax.axvline(THRESHOLD_DANGEROUS, color="#BA7517", lw=1, linestyle=":",
-           label=f"Chosen threshold = {THRESHOLD_DANGEROUS}")
-ax.set_xlabel("Threshold",    fontsize=11)
-ax.set_ylabel("Total cost",   fontsize=11)
-ax.set_title(f"Cost-based Threshold Selection  (FN cost={FN_COST}, FP cost={FP_COST})",
-             fontsize=11)
+           label=f"Chosen = {THRESHOLD_DANGEROUS}")
+ax.set_xlabel("Threshold",  fontsize=11)
+ax.set_ylabel("Total cost", fontsize=11)
+ax.set_title(f"Cost-based Threshold  (FN={FN_COST}, FP={FP_COST})", fontsize=11)
 ax.legend(fontsize=9)
 ax.grid(True, alpha=0.3)
 fig.tight_layout()
 fig.savefig(FIGURES_DIR / "threshold_cost.png", dpi=150)
 plt.close(fig)
-print(f"  Optimal threshold by cost: {best_t_cost:.2f}  |  Cost: {best_cost:,}")
+print(f"  Optimal threshold: {best_t_cost:.2f}  |  Cost: {best_cost:,}")
 print("  Saved threshold_cost.png")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  5. Feature importance (tree-based best model)
+#  5. Feature importance
 # ═══════════════════════════════════════════════════════════════════════════════
 print("\n── Feature importance ───────────────────────────────────────────────────")
 try:
@@ -271,7 +269,7 @@ try:
     feat_vals   = importances[sorted_idx]
 
     fig, ax = plt.subplots(figsize=(7, 6))
-    bars = ax.barh(feat_names, feat_vals, color="#185FA5", alpha=0.8)
+    ax.barh(feat_names, feat_vals, color="#185FA5", alpha=0.8)
     ax.set_xlabel("Feature Importance", fontsize=11)
     ax.set_title("Feature Importance — Best Model", fontsize=12)
     ax.grid(True, axis="x", alpha=0.3)
@@ -280,24 +278,23 @@ try:
     plt.close(fig)
     print("  Saved feature_importance_best.png")
 except AttributeError:
-    print("  [skip] Best model has no feature_importances_ (not a tree)")
+    print("  [skip] Best model has no feature_importances_")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  6. Error Analysis — 20 FP + 20 FN with SHAP
+#  6. Error Analysis
 # ═══════════════════════════════════════════════════════════════════════════════
 print("\n── Error analysis ───────────────────────────────────────────────────────")
 y_pred_best = best_model.predict(X_test)
 
-fp_idx = np.where((y_pred_best == 1) & (y_test == 0))[0][:20]
-fn_idx = np.where((y_pred_best == 0) & (y_test == 1))[0][:20]
+fp_idx    = np.where((y_pred_best == 1) & (y_test == 0))[0][:20]
+fn_idx    = np.where((y_pred_best == 0) & (y_test == 1))[0][:20]
 error_idx = np.concatenate([fp_idx, fn_idx])
 error_type = (["False Positive"] * len(fp_idx) +
               ["False Negative"] * len(fn_idx))
 
-print(f"  FP samples: {len(fp_idx)}  |  FN samples: {len(fn_idx)}")
+print(f"  FP: {len(fp_idx)}  |  FN: {len(fn_idx)}")
 
-# SHAP for error samples
 shap_explainer = shap.TreeExplainer(best_model)
 X_err          = X_test[error_idx]
 shap_vals      = shap_explainer.shap_values(X_err)
@@ -309,19 +306,18 @@ elif shap_vals.ndim == 3:
 else:
     sv = shap_vals
 
-# Build error_analysis DataFrame
 rows = []
 for i, (idx, err_type) in enumerate(zip(error_idx, error_type)):
-    top2 = np.argsort(np.abs(sv[i]))[::-1][:2]
+    top2   = np.argsort(np.abs(sv[i]))[::-1][:2]
     reason = " | ".join(
         f"{FEATURE_COLS[j]}({sv[i][j]:+.3f})" for j in top2
     )
     row = {
-        "error_type"  : err_type,
-        "true_label"  : int(y_test[idx]),
-        "pred_label"  : int(y_pred_best[idx]),
-        "score"       : round(float(y_prob_best[idx]), 4),
-        "top_shap_reasons": reason,
+        "error_type"       : err_type,
+        "true_label"       : int(y_test[idx]),
+        "pred_label"       : int(y_pred_best[idx]),
+        "score"            : round(float(y_prob_best[idx]), 4),
+        "top_shap_reasons" : reason,
     }
     for c, col in enumerate(FEATURE_COLS):
         row[col] = X_test_raw[idx][c]
@@ -330,56 +326,53 @@ for i, (idx, err_type) in enumerate(zip(error_idx, error_type)):
 error_df = pd.DataFrame(rows)
 error_csv_path = REPORTS_DIR / "error_analysis.csv"
 error_df.to_csv(error_csv_path, index=False)
-print(f"  Saved error_analysis.csv  ({len(rows)} rows)")
+print(f"  Saved error_analysis.csv ({len(rows)} rows)")
 
-# Print a summary of why FP/FN happen
-print("\n  Top reasons for False Positives (safe URLs flagged as phishing):")
+print("\n  Top reasons for False Positives:")
 fp_df = error_df[error_df["error_type"] == "False Positive"]
 if len(fp_df):
-    top_fp = fp_df["top_shap_reasons"].value_counts().head(3)
-    for reason, cnt in top_fp.items():
+    for reason, cnt in fp_df["top_shap_reasons"].value_counts().head(3).items():
         print(f"    [{cnt}x] {reason}")
 
-print("\n  Top reasons for False Negatives (phishing URLs missed):")
+print("\n  Top reasons for False Negatives:")
 fn_df = error_df[error_df["error_type"] == "False Negative"]
 if len(fn_df):
-    top_fn = fn_df["top_shap_reasons"].value_counts().head(3)
-    for reason, cnt in top_fn.items():
+    for reason, cnt in fn_df["top_shap_reasons"].value_counts().head(3).items():
         print(f"    [{cnt}x] {reason}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  7. Save evaluation_results.json (consumed by db.py seed)
+#  7. Save evaluation_results.json
 # ═══════════════════════════════════════════════════════════════════════════════
 print("\n── Saving results JSON ──────────────────────────────────────────────────")
 best_model_name = max(all_results, key=lambda k: all_results[k]["f1"])
 best_metrics    = all_results[best_model_name]
 
 results_json = {
-    "best_model"              : best_model_name,
-    "accuracy"                : best_metrics["accuracy"],
-    "precision"               : best_metrics["precision"],
-    "recall"                  : best_metrics["recall"],
-    "f1"                      : best_metrics["f1"],
-    "auc"                     : best_metrics["auc"],
-    "fpr"                     : best_metrics["fpr"],
-    "threshold_dangerous"     : THRESHOLD_DANGEROUS,
-    "threshold_suspicious"    : THRESHOLD_SUSPICIOUS,
-    "optimal_threshold_cost"  : round(float(best_t_cost), 4),
-    "fn_cost"                 : FN_COST,
-    "fp_cost"                 : FP_COST,
-    "test_set_size"           : int(len(y_test)),
-    "all_models"              : all_results,
+    "best_model"            : best_model_name,
+    "accuracy"              : best_metrics["accuracy"],
+    "precision"             : best_metrics["precision"],
+    "recall"                : best_metrics["recall"],
+    "f1"                    : best_metrics["f1"],
+    "auc"                   : best_metrics["auc"],
+    "fpr"                   : best_metrics["fpr"],
+    "threshold_dangerous"   : THRESHOLD_DANGEROUS,
+    "threshold_suspicious"  : THRESHOLD_SUSPICIOUS,
+    "optimal_threshold_cost": round(float(best_t_cost), 4),
+    "fn_cost"               : FN_COST,
+    "fp_cost"               : FP_COST,
+    "test_set_size"         : int(len(y_test)),
+    "all_models"            : all_results,
 }
 
 json_path = MODELS_DIR / "evaluation_results.json"
 with open(json_path, "w", encoding="utf-8") as f:
     json.dump(results_json, f, indent=2, ensure_ascii=False)
-print(f"  Saved evaluation_results.json")
+print("  Saved evaluation_results.json")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  8. Human-readable evaluation_report.txt
+#  8. Human-readable report
 # ═══════════════════════════════════════════════════════════════════════════════
 print("\n── Writing evaluation_report.txt ────────────────────────────────────────")
 lines = [
@@ -412,16 +405,16 @@ for name, m in all_results.items():
 lines += [
     "",
     "── Error Analysis Summary ──────────────────────────",
-    f"  False Positives analysed : {len(fp_idx)}",
-    f"  False Negatives analysed : {len(fn_idx)}",
-    f"  Details saved to         : reports/error_analysis.csv",
+    f"  False Positives : {len(fp_idx)}",
+    f"  False Negatives : {len(fn_idx)}",
+    f"  Details         : reports/error_analysis.csv",
     "",
     "── Figures Generated ───────────────────────────────",
-    "  confusion_matrix_<model>.png  — per-model heatmap",
-    "  roc_curves.png                — all models comparison",
-    "  threshold_analysis.png        — P/R/F1 vs threshold",
-    "  threshold_cost.png            — cost-based selection",
-    "  feature_importance_best.png   — tree feature importances",
+    "  confusion_matrix_<model>.png",
+    "  roc_curves.png",
+    "  threshold_analysis.png",
+    "  threshold_cost.png",
+    "  feature_importance_best.png",
     "",
     "=" * 60,
 ]
@@ -431,5 +424,4 @@ with open(report_path, "w", encoding="utf-8") as f:
     f.write("\n".join(lines))
 
 print("\n".join(lines))
-print(f"\n  Saved evaluation_report.txt")
 print("\n✅ Evaluation complete!")

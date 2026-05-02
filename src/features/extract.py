@@ -3,24 +3,30 @@ import math
 import pandas as pd
 from urllib.parse import urlparse
 
-# ── Suspicious words ────────────────────────────────────
+# ── Suspicious words (phishing behavior only — NO brand names here) ─────────
+# ✅ FIX: شيلنا brand names (google, amazon, paypal...) من الـ list دي
+# كانوا بيخلوا روابط زي mail.google.com تتحسب suspicious
 SUSPICIOUS_WORDS = [
     "login", "secure", "verify", "account", "update",
     "banking", "confirm", "password", "signin", "webscr",
-    "paypal", "ebay", "amazon", "apple", "microsoft",
-    "google", "facebook", "netflix", "support", "alert",
-    "suspended", "limited", "unusual", "validate", "billing"
+    "support", "alert", "suspended", "limited", "unusual",
+    "validate", "billing", "authenticate", "credential",
+    "urgent", "expire", "click-here", "free-prize"
 ]
 
-# ── Popular legit domains for typosquatting detection ──
-POPULAR_DOMAINS = [
+# ── Brand names — for typosquatting detection ONLY (not used in ML features) ─
+# ✅ FIX: Brand names منفصلة — بنستخدمهم بس في is_typosquat و brand_in_subdomain
+BRAND_NAMES = [
     "google", "facebook", "amazon", "paypal", "apple",
     "microsoft", "netflix", "instagram", "twitter", "linkedin",
     "yahoo", "gmail", "outlook", "bankofamerica", "chase",
     "wellsfargo", "ebay", "dropbox", "spotify", "reddit"
 ]
 
-# ── Levenshtein distance ────────────────────────────────
+# للـ Levenshtein نستخدم BRAND_NAMES بدل POPULAR_DOMAINS
+POPULAR_DOMAINS = BRAND_NAMES  # alias للـ backward compatibility
+
+# ── Levenshtein distance ─────────────────────────────────────────────────────
 def levenshtein(s1: str, s2: str) -> int:
     if len(s1) < len(s2):
         return levenshtein(s2, s1)
@@ -37,14 +43,13 @@ def levenshtein(s1: str, s2: str) -> int:
     return prev[-1]
 
 def min_levenshtein_to_popular(hostname: str) -> int:
-    """أقل مسافة تعديل بين الـ hostname وأي دومين مشهور"""
-    # نشيل الـ TLD (.com / .net / إلخ)
+    """أقل مسافة تعديل بين الـ hostname وأي brand مشهور"""
     base = hostname.split(".")[0] if "." in hostname else hostname
     if not base:
         return 99
-    return min(levenshtein(base, pop) for pop in POPULAR_DOMAINS)
+    return min(levenshtein(base, brand) for brand in BRAND_NAMES)
 
-# ── Shannon entropy ──────────────────────────────────────
+# ── Shannon entropy ───────────────────────────────────────────────────────────
 def shannon_entropy(text: str) -> float:
     if not text:
         return 0.0
@@ -54,13 +59,13 @@ def shannon_entropy(text: str) -> float:
     n = len(text)
     return -sum((f / n) * math.log2(f / n) for f in freq.values())
 
-# ── Digit ratio ──────────────────────────────────────────
+# ── Digit ratio ───────────────────────────────────────────────────────────────
 def digit_ratio(text: str) -> float:
     if not text:
         return 0.0
     return sum(c.isdigit() for c in text) / len(text)
 
-# ── Main extractor ───────────────────────────────────────
+# ── Main extractor ────────────────────────────────────────────────────────────
 def extract_features(url: str) -> dict:
     try:
         parsed   = urlparse(url if url.startswith("http") else "http://" + url)
@@ -73,8 +78,14 @@ def extract_features(url: str) -> dict:
 
     min_lev = min_levenshtein_to_popular(hostname)
 
+    # ✅ FIX: نحسب brand_in_subdomain بشكل صح
+    # بنشوف لو الـ brand موجود في subdomain بس (مش الـ main domain)
+    parts = hostname.split(".")
+    subdomain_str = ".".join(parts[:-2]) if len(parts) > 2 else ""
+    brand_in_sub = int(any(brand in subdomain_str for brand in BRAND_NAMES))
+
     return {
-        # ── الميزات الأصلية (نفس الأسماء) ──────────────
+        # ── الميزات الأصلية ──────────────────────────────────────────────────
         "url_length"           : len(url),
         "num_dots"             : url.count("."),
         "num_hyphens"          : url.count("-"),
@@ -88,17 +99,22 @@ def extract_features(url: str) -> dict:
         "has_ip"               : int(bool(re.match(
                                      r"http[s]?://\d+\.\d+\.\d+\.\d+", url))),
         "has_https"            : int(parsed.scheme == "https"),
-        "has_suspicious_word"  : int(any(w in full for w in SUSPICIOUS_WORDS)),
+
+        # ✅ FIX: بس num_suspicious_words بيبقى في الـ ML features
+        # شيلنا has_suspicious_word عشان كان redundant مع num_suspicious_words
         "num_subdomains"       : max(len(hostname.split(".")) - 2, 0),
         "hostname_length"      : len(hostname),
         "path_length"          : len(path),
         "double_slash"         : int("//" in path),
         "has_at_in_url"        : int("@" in url),
+
+        # ✅ FIX: SUSPICIOUS_WORDS دلوقتي بدون brand names
+        # فـ mail.google.com مش هتحسب suspicious من الكلمات دي
         "num_suspicious_words" : sum(w in full for w in SUSPICIOUS_WORDS),
 
-        # ── ميزات جديدة ─────────────────────────────────
-        "min_levenshtein"      : min_lev,           # typosquatting
-        "is_typosquat"         : int(1 <= min_lev <= 2),  # قريب جداً من دومين مشهور
+        # ── ميزات extra (للـ rule_based_boost بس — مش للـ ML) ───────────────
+        "min_levenshtein"      : min_lev,
+        "is_typosquat"         : int(1 <= min_lev <= 2),
         "hostname_entropy"     : round(shannon_entropy(hostname), 4),
         "digit_ratio_hostname" : round(digit_ratio(hostname), 4),
         "query_length"         : len(query),
@@ -109,11 +125,7 @@ def extract_features(url: str) -> dict:
                                      for t in [".tk", ".ml", ".ga", ".cf", ".gq",
                                                ".xyz", ".top", ".click", ".link"]
                                  )),
-        "brand_in_subdomain"   : int(any(
-                                     pop in hostname.split(".")[0]
-                                     for pop in POPULAR_DOMAINS
-                                     if len(hostname.split(".")) > 2
-                                 )),
+        "brand_in_subdomain"   : brand_in_sub,  # ✅ fixed logic above
     }
 
 def feature_names():
