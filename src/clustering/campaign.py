@@ -48,8 +48,9 @@ except ImportError:
 
 FEATURE_COLS = [
     "url_length","num_dots","num_hyphens","num_underscores","num_slashes",
-    "num_at","num_question","num_equals","num_percent","num_digits",
-    "has_ip","has_https","has_suspicious_word","num_subdomains",
+    "num_at","num_question","num_equals","num_percent",
+    "num_digits_in_domain","num_digits_in_path","last_path_segment_is_integer",
+    "has_ip","has_https","num_subdomains",
     "hostname_length","path_length","double_slash","has_at_in_url",
     "num_suspicious_words",
 ]

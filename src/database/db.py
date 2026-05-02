@@ -10,7 +10,10 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-DB_PATH = os.environ.get("PHISHTRACE_DB", "phishtrace.db")
+_DEFAULT_DB = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "data", "phishtrace.db")
+)
+DB_PATH = os.environ.get("PHISHTRACE_DB", _DEFAULT_DB)
 
 
 def get_conn():
@@ -32,6 +35,7 @@ def init_db():
                 rule_alerts TEXT    DEFAULT '[]',
                 shap_reasons TEXT   DEFAULT '[]',
                 features    TEXT    DEFAULT '{}',
+                campaign_id TEXT    DEFAULT NULL,
                 scanned_at  TEXT    NOT NULL
             );
 
@@ -46,13 +50,13 @@ def init_db():
 
 
 def save_scan(url, verdict, score, raw_score,
-              rule_alerts=None, shap_reasons=None, features=None):
+              rule_alerts=None, shap_reasons=None, features=None, campaign_id=None):
     """بنحفظ نتيجة الـ scan وبنرجع الـ id."""
     with get_conn() as conn:
         cur = conn.execute(
             """INSERT INTO scans
-               (url, verdict, score, raw_score, rule_alerts, shap_reasons, features, scanned_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+               (url, verdict, score, raw_score, rule_alerts, shap_reasons, features, campaign_id, scanned_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 url,
                 verdict,
@@ -61,6 +65,7 @@ def save_scan(url, verdict, score, raw_score,
                 json.dumps(rule_alerts  or []),
                 json.dumps(shap_reasons or []),
                 json.dumps(features     or {}),
+                campaign_id,
                 datetime.utcnow().isoformat(),
             )
         )
@@ -83,9 +88,55 @@ def get_history(limit=50):
             "raw_score"   : r["raw_score"],
             "rule_alerts" : json.loads(r["rule_alerts"]),
             "shap_reasons": json.loads(r["shap_reasons"]),
+            "campaign_id" : r["campaign_id"],
             "scanned_at"  : r["scanned_at"],
         })
     return result
+
+
+def get_scan(scan_id):
+    """بنرجع scan واحد بالـ id بتاعه."""
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM scans WHERE id = ?", (scan_id,)).fetchone()
+    if row is None:
+        return None
+    return {
+        "id"          : row["id"],
+        "url"         : row["url"],
+        "verdict"     : row["verdict"],
+        "score"       : row["score"],
+        "raw_score"   : row["raw_score"],
+        "rule_alerts" : json.loads(row["rule_alerts"]),
+        "shap_reasons": json.loads(row["shap_reasons"]),
+        "campaign_id" : row["campaign_id"],
+        "scanned_at"  : row["scanned_at"],
+    }
+
+
+def get_stats():
+    """بنرجع إحصائيات مع model metrics من evaluation_results.json."""
+    from pathlib import Path
+
+    with get_conn() as conn:
+        total      = conn.execute("SELECT COUNT(*) FROM scans").fetchone()[0]
+        dangerous  = conn.execute("SELECT COUNT(*) FROM scans WHERE verdict='Dangerous'").fetchone()[0]
+        suspicious = conn.execute("SELECT COUNT(*) FROM scans WHERE verdict='Suspicious'").fetchone()[0]
+        safe       = conn.execute("SELECT COUNT(*) FROM scans WHERE verdict='Safe'").fetchone()[0]
+
+    eval_path = Path(__file__).resolve().parent.parent.parent / "models" / "evaluation_results.json"
+    if eval_path.exists():
+        with open(eval_path) as f:
+            model_metrics = json.load(f)
+    else:
+        model_metrics = {"accuracy": 0, "precision": 0, "recall": 0, "f1": 0, "fpr": 0}
+
+    return {
+        "total_scans"  : total,
+        "dangerous"    : dangerous,
+        "suspicious"   : suspicious,
+        "safe"         : safe,
+        "model_metrics": model_metrics,
+    }
 
 
 def get_dashboard_stats():
@@ -127,3 +178,18 @@ def get_campaigns():
         }
         for r in rows
     ]
+
+
+def save_campaigns(campaign_list):
+    """بنحفظ الـ campaigns الجديدة — بنمسح القديمة الأول عشان الـ clustering بيتعمل من الأول."""
+    now = datetime.utcnow().isoformat()
+    with get_conn() as conn:
+        conn.execute("DELETE FROM campaigns")
+        conn.executemany(
+            "INSERT INTO campaigns (name, scan_ids, created_at) VALUES (?, ?, ?)",
+            [
+                (c["campaign_name"], json.dumps([]), now)
+                for c in campaign_list
+            ]
+        )
+    print(f"[DB] Saved {len(campaign_list)} campaigns.")

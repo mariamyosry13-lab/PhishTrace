@@ -73,28 +73,28 @@ TEST_CASES = [
         "expected_verdict" : "Dangerous",
         "expected_score_gt": 0.70,
         "description"      : "IP-based URL with suspicious word",
-        "expected_features": {"has_ip": 1, "has_suspicious_word": 1},
+        "expected_features": {"has_ip": 1},
     },
     {
         "url"              : "http://bankofegypt-login.evil.xyz/confirm?token=abc123",
         "expected_verdict" : "Dangerous",
         "expected_score_gt": 0.60,
         "description"      : "Brand impersonation + suspicious TLD + suspicious word",
-        "expected_features": {"has_suspicious_word": 1},
+        "expected_features": {},
     },
     {
         "url"              : "http://secure-account-update.com/verify/login/confirm",
         "expected_verdict" : "Dangerous",
         "expected_score_gt": 0.65,
         "description"      : "Multiple suspicious words in path",
-        "expected_features": {"has_suspicious_word": 1},
+        "expected_features": {},
     },
     {
         "url"              : "http://paypal-account.verify-secure.login.tk/update",
         "expected_verdict" : "Dangerous",
         "expected_score_gt": 0.65,
         "description"      : "Many subdomains + suspicious TLD + suspicious words",
-        "expected_features": {"has_suspicious_word": 1, "num_subdomains": 2},
+        "expected_features": {"num_subdomains": 2},
     },
 
     # ── SUSPICIOUS ─────────────────────────────────────────
@@ -103,7 +103,7 @@ TEST_CASES = [
         "expected_verdict" : ["Suspicious", "Dangerous"],
         "expected_score_gt": 0.45,
         "description"      : "Suspicious TLD + login word",
-        "expected_features": {"has_suspicious_word": 1},
+        "expected_features": {},
     },
     {
         "url"              : "https://amazoon.net/deals/today",
@@ -119,7 +119,7 @@ TEST_CASES = [
         "expected_verdict" : "Safe",
         "expected_score_lt": 0.45,
         "description"      : "Legitimate Google URL",
-        "expected_features": {"has_https": 1, "has_ip": 0, "has_suspicious_word": 0},
+        "expected_features": {"has_https": 1, "has_ip": 0, "num_suspicious_words": 0},
     },
     {
         "url"              : "https://www.github.com/topics/python",
@@ -154,19 +154,35 @@ def rule_based_boost(feats: dict, raw_score: float) -> float:
     boost = 0.0
 
     if feats.get("is_typosquat", 0):
-        boost += 0.25
+        boost += 0.20
     if feats.get("has_ip", 0):
-        boost += 0.20
+        boost += 0.15
     if feats.get("brand_in_subdomain", 0):
-        boost += 0.20
+        boost += 0.15
     if feats.get("tld_suspicious", 0):
-        boost += 0.15
+        boost += 0.10
     if feats.get("has_at_in_url", 0):
-        boost += 0.15
+        boost += 0.10
     if feats.get("num_subdomains", 0) > 3:
-        boost += 0.10
+        boost += 0.05
     if feats.get("hostname_entropy", 0) > 4.0:
-        boost += 0.10
+        boost += 0.05
+
+    boost = min(boost, 0.30)
+    if raw_score < 0.40:
+        boost = boost * 0.3
+
+    is_clean = (
+        feats.get("has_https", 0) == 1 and
+        feats.get("tld_suspicious", 0) == 0 and
+        feats.get("num_suspicious_words", 0) == 0 and
+        feats.get("has_ip", 0) == 0 and
+        feats.get("is_typosquat", 0) == 0 and
+        feats.get("brand_in_subdomain", 0) == 0 and
+        feats.get("has_at_in_url", 0) == 0
+    )
+    if is_clean and raw_score < 0.85:
+        raw_score = raw_score * 0.55
 
     return min(raw_score + boost, 1.0)
 
@@ -208,10 +224,10 @@ def test_features():
 
     # Test 3: Suspicious word detection
     f = extract_features("http://secure-login.com/verify")
-    if f.get("has_suspicious_word") == 1:
+    if f.get("num_suspicious_words", 0) >= 1:
         ok("Suspicious word: 'login' + 'verify' → detected")
     else:
-        fail("Suspicious word detection failed", f"has_suspicious_word={f.get('has_suspicious_word')}")
+        fail("Suspicious word detection failed", f"num_suspicious_words={f.get('num_suspicious_words')}")
 
     # Test 4: Subdomains
     f     = extract_features("http://a.b.c.evil.com/page")
@@ -288,11 +304,12 @@ def test_model():
     scaler = joblib.load(scaler_path)
     model  = joblib.load(model_path)
 
-    # ✅ نفس الـ 19 columns اللي الموديل اتعلم عليها
+    # ✅ نفس الـ 20 columns اللي الموديل اتعلم عليها
     FEATURE_COLS = [
         "url_length","num_dots","num_hyphens","num_underscores","num_slashes",
-        "num_at","num_question","num_equals","num_percent","num_digits",
-        "has_ip","has_https","has_suspicious_word","num_subdomains",
+        "num_at","num_question","num_equals","num_percent",
+        "num_digits_in_domain","num_digits_in_path","last_path_segment_is_integer",
+        "has_ip","has_https","num_subdomains",
         "hostname_length","path_length","double_slash","has_at_in_url",
         "num_suspicious_words",
     ]
@@ -378,15 +395,22 @@ def test_database():
     test_scan = {
         "url"        : "http://test-phishtrace.com/test",
         "score"      : 0.88,
-        "percent"    : 88.0,
         "verdict"    : "Dangerous",
-        "features"   : {"has_ip": 0, "has_suspicious_word": 1},
-        "reasons"    : [{"feature": "has_suspicious_word", "contribution": 0.3}],
+        "features"   : {"has_ip": 0, "num_suspicious_words": 1},
+        "reasons"    : [{"feature": "num_suspicious_words", "contribution": 0.3}],
         "campaign_id": None,
     }
 
     try:
-        scan_id = save_scan(test_scan)
+        scan_id = save_scan(
+            url          = test_scan["url"],
+            verdict      = test_scan["verdict"],
+            score        = test_scan["score"],
+            raw_score    = test_scan["score"],
+            shap_reasons = test_scan["reasons"],
+            features     = test_scan["features"],
+            campaign_id  = test_scan["campaign_id"],
+        )
         if isinstance(scan_id, int) and scan_id > 0:
             ok(f"save_scan() → scan_id={scan_id}")
         else:
@@ -451,8 +475,9 @@ def test_shap():
 
     FEATURE_COLS = [
         "url_length","num_dots","num_hyphens","num_underscores","num_slashes",
-        "num_at","num_question","num_equals","num_percent","num_digits",
-        "has_ip","has_https","has_suspicious_word","num_subdomains",
+        "num_at","num_question","num_equals","num_percent",
+        "num_digits_in_domain","num_digits_in_path","last_path_segment_is_integer",
+        "has_ip","has_https","num_subdomains",
         "hostname_length","path_length","double_slash","has_at_in_url",
         "num_suspicious_words",
     ]

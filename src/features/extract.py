@@ -95,7 +95,15 @@ def extract_features(url: str) -> dict:
         "num_question"         : url.count("?"),
         "num_equals"           : url.count("="),
         "num_percent"          : url.count("%"),
-        "num_digits"           : sum(c.isdigit() for c in url),
+        # digits split by location: domain digits = phishing signal,
+        # path digits = often legitimate numeric IDs
+        "num_digits_in_domain" : sum(c.isdigit() for c in hostname),
+        "num_digits_in_path"   : sum(c.isdigit() for c in (path + query)),
+        # 1 when the last path segment is a pure integer e.g. /questions/11227809
+        "last_path_segment_is_integer": int(
+            bool([s for s in path.split("/") if s]) and
+            [s for s in path.split("/") if s][-1].isdigit()
+        ),
         "has_ip"               : int(bool(re.match(
                                      r"http[s]?://\d+\.\d+\.\d+\.\d+", url))),
         "has_https"            : int(parsed.scheme == "https"),

@@ -18,21 +18,30 @@ from database.db import init_db, save_scan, get_history, get_dashboard_stats, ge
 app = Flask(__name__,
             template_folder="../../frontend/templates",
             static_folder="../../frontend/static")
-CORS(app)
+CORS(app, origins=["http://localhost:5000", "http://127.0.0.1:5000"])
 
 # ── Paths ────────────────────────────────────────────────────────────────────
-MODELS_DIR = "models"
+MODELS_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "models"))
 
 # ── Thresholds ───────────────────────────────────────────────────────────────
 THRESHOLD_DANGEROUS  = 0.75
-THRESHOLD_SUSPICIOUS = 0.50
+THRESHOLD_SUSPICIOUS = 0.45
 
 # ── Load models once at startup ──────────────────────────────────────────────
 print("Loading models...")
 scaler    = joblib.load(os.path.join(MODELS_DIR, "scaler.pkl"))
 model     = joblib.load(os.path.join(MODELS_DIR, "best_model.pkl"))
 explainer = shap.TreeExplainer(model)
-print("Models loaded ✅")
+print("Models loaded.")
+
+try:
+    campaign_model  = joblib.load(os.path.join(MODELS_DIR, "campaign_model.pkl"))
+    campaign_scaler = joblib.load(os.path.join(MODELS_DIR, "campaign_scaler.pkl"))
+    print("Campaign models loaded.")
+except FileNotFoundError:
+    campaign_model  = None
+    campaign_scaler = None
+    print("Campaign models not found — run clustering/campaign.py first")
 
 # ── Init DB ──────────────────────────────────────────────────────────────────
 init_db()
@@ -40,7 +49,8 @@ init_db()
 # ── 18 features ─────────────────────────────────────────────────────────────
 FEATURE_COLS = [
     "url_length", "num_dots", "num_hyphens", "num_underscores", "num_slashes",
-    "num_at", "num_question", "num_equals", "num_percent", "num_digits",
+    "num_at", "num_question", "num_equals", "num_percent",
+    "num_digits_in_domain", "num_digits_in_path", "last_path_segment_is_integer",
     "has_ip", "has_https", "num_subdomains",
     "hostname_length", "path_length", "double_slash", "has_at_in_url",
     "num_suspicious_words"
@@ -104,7 +114,32 @@ def rule_based_boost(feats: dict, raw_score: float) -> tuple[float, list[str]]:
     if raw_score < 0.40:
         boost = boost * 0.3
 
+    # Dampen scores for URLs that have no red-flag signals at all.
+    # When every rule check is clean, the ML score is driven by structural
+    # features like num_digits from legitimate numeric IDs (e.g. /questions/11227809)
+    # rather than genuine phishing indicators — so we reduce confidence.
+    is_clean = (
+        feats.get("has_https", 0) == 1 and
+        feats.get("tld_suspicious", 0) == 0 and
+        feats.get("num_suspicious_words", 0) == 0 and
+        feats.get("has_ip", 0) == 0 and
+        feats.get("is_typosquat", 0) == 0 and
+        feats.get("brand_in_subdomain", 0) == 0 and
+        feats.get("has_at_in_url", 0) == 0
+    )
+    if is_clean and raw_score < 0.85:
+        raw_score = raw_score * 0.55
+
     return min(raw_score + boost, 1.0), rules
+
+
+def assign_campaign(feats: dict) -> str | None:
+    if campaign_model is None:
+        return None
+    X   = np.array([[feats.get(c, 0) for c in FEATURE_COLS]])
+    Xs  = campaign_scaler.transform(X)
+    cid = int(campaign_model.predict(Xs)[0])
+    return f"campaign_{cid:03d}"
 
 
 def get_verdict(score: float) -> str:
@@ -160,9 +195,9 @@ def analyze():
     final_score, rule_alerts = rule_based_boost(feats, raw_score)
     verdict                  = get_verdict(final_score)
     shap_reasons             = get_shap_explanation(X_scaled)
+    campaign_id              = assign_campaign(feats)
 
-    # ✅ احفظ في الـ DB
-    save_scan(
+    scan_id = save_scan(
         url          = url,
         verdict      = verdict,
         score        = final_score,
@@ -170,10 +205,13 @@ def analyze():
         rule_alerts  = rule_alerts,
         shap_reasons = shap_reasons,
         features     = feats,
+        campaign_id  = campaign_id,
     )
 
     return jsonify({
         "url"         : url,
+        "scan_id"     : scan_id,
+        "campaign_id" : campaign_id,
         "score"       : round(final_score, 4),
         "raw_ml_score": round(raw_score, 4),
         "percent"     : round(final_score * 100, 1),
@@ -209,4 +247,6 @@ def health():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    # use_reloader=False prevents Werkzeug from spawning a second process that
+    # would load the XGBoost model + SHAP TreeExplainer twice, exhausting RAM.
+    app.run(debug=True, use_reloader=False, host="0.0.0.0", port=5000)

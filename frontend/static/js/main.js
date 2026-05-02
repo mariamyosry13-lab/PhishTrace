@@ -6,8 +6,17 @@ const ENDPOINTS = {
     dashboard: '/api/dashboard',
     campaigns: '/api/campaigns',
     history:   '/api/history',
-    scan:      '/api/scan',
 };
+
+// ── Utils ────────────────────────────────────────────────
+function escapeHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
 
 // ── Toast ────────────────────────────────────────────────
 function showToast(msg, type = 'info') {
@@ -244,6 +253,9 @@ function downloadReport() {
         </div>`;
     }).join('');
 
+    const safeUrl        = escapeHtml(d.url || '');
+    const safeCampaignId = escapeHtml(d.campaign_id || '');
+
     const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -296,12 +308,12 @@ function downloadReport() {
   <div class="score-ring"><div class="score-num">${score}%</div></div>
   <div style="flex:1">
     <div class="verdict-name">${verdictText}</div>
-    <div class="verdict-url">${d.url}</div>
+    <div class="verdict-url">${safeUrl}</div>
     <div class="pills">
       <span class="pill">Risk Score: ${score}%</span>
       <span class="pill">SHAP Explainability</span>
       <span class="pill">Random Forest</span>
-      ${d.campaign_id ? `<span class="pill pill-warn">⚑ ${d.campaign_id}</span>` : ''}
+      ${safeCampaignId ? `<span class="pill pill-warn">⚑ ${safeCampaignId}</span>` : ''}
     </div>
   </div>
 </div>
@@ -347,7 +359,6 @@ function renderFeatures(f) {
         { k: 'has_ip',               label: 'IP Address',        icon: 'fa-server',               fmt: v => v ? 'Yes':'No', bad: v => !!v },
         { k: 'num_subdomains',       label: 'Subdomains',        icon: 'fa-layer-group',          fmt: v => v,              bad: v => v >= 3 },
         { k: 'has_https',            label: 'HTTPS',             icon: 'fa-lock',                 fmt: v => v ? 'Yes':'No', bad: v => !v },
-        { k: 'has_suspicious_word',  label: 'Suspicious Word',   icon: 'fa-key',                  fmt: v => v ? 'Yes':'No', bad: v => !!v },
         { k: 'num_hyphens',          label: 'Hyphens',           icon: 'fa-minus',                fmt: v => v,              bad: v => v >= 2 },
         { k: 'num_dots',             label: 'Dots',              icon: 'fa-ellipsis',             fmt: v => v,              bad: v => v >= 4 },
         { k: 'path_length',          label: 'Path Length',       icon: 'fa-folder-open',          fmt: v => v + ' chars',   bad: v => v > 50 },
@@ -513,10 +524,10 @@ function renderRecentScans(scans) {
                 <thead><tr><th>URL</th><th>Result</th><th>Score</th><th>Time</th></tr></thead>
                 <tbody>
                     ${scans.slice(0, 8).map(s => `<tr>
-                        <td class="font-mono text-xs text-gray-400 max-w-xs truncate" title="${s.url}">${s.url}</td>
+                        <td class="font-mono text-xs text-gray-400 max-w-xs truncate" title="${escapeHtml(s.url)}">${escapeHtml(s.url)}</td>
                         <td><span class="text-xs px-2.5 py-1 rounded-lg font-semibold ${styles[s.verdict] || ''}">${s.verdict ?? '—'}</span></td>
                         <td class="font-mono text-sm">${s.score != null ? Math.round(s.score * 100) + '%' : '—'}</td>
-                        <td class="text-xs text-gray-500">${s.timestamp ? s.timestamp.slice(0, 16).replace('T', ' ') : '—'}</td>
+                        <td class="text-xs text-gray-500">${s.scanned_at ? s.scanned_at.slice(0, 16).replace('T', ' ') : '—'}</td>
                     </tr>`).join('')}
                 </tbody>
             </table>
@@ -600,7 +611,7 @@ function renderCampaignsFromHistory(list, scans) {
         const count     = campScans.length;
         const maxCount  = grouped[campaignNames[0]].length || 1;
         const barPct    = Math.round((count / maxCount) * 100);
-        const lastSeen  = campScans[0]?.timestamp?.slice(0, 16).replace('T', ' ') || '—';
+        const lastSeen  = campScans[0]?.scanned_at?.slice(0, 16).replace('T', ' ') || '—';
 
         // Detect common features across URLs in this campaign
         const tags = [];
@@ -712,7 +723,7 @@ function renderHistory(d) {
                     ${scans.map(s => `
                     <tr>
                         <td class="text-[11px] text-gray-600 font-mono">${s.id ?? '—'}</td>
-                        <td class="font-mono text-xs text-gray-400 max-w-xs truncate" title="${s.url}">${s.url}</td>
+                        <td class="font-mono text-xs text-gray-400 max-w-xs truncate" title="${escapeHtml(s.url)}">${escapeHtml(s.url)}</td>
                         <td>
                             <span class="text-xs px-2.5 py-1 rounded-lg font-semibold ${styles[s.verdict] || ''}">
                                 ${s.verdict ?? '—'}
@@ -720,11 +731,11 @@ function renderHistory(d) {
                         </td>
                         <td class="font-mono text-sm">${s.score != null ? Math.round(s.score * 100) + '%' : '—'}</td>
                         <td class="text-[11px] font-mono text-gray-500">${s.campaign_id || '—'}</td>
-                        <td class="text-xs text-gray-500">${s.timestamp ? s.timestamp.slice(0, 16).replace('T', ' ') : '—'}</td>
+                        <td class="text-xs text-gray-500">${s.scanned_at ? s.scanned_at.slice(0, 16).replace('T', ' ') : '—'}</td>
                         <td>
                             <button
                                 class="text-gray-500 hover:text-white transition-colors px-2 py-1 rounded hover:bg-white/5"
-                                onclick="reAnalyze('${s.url.replace(/'/g, "\\'")}')"
+                                data-reanalyze="${escapeHtml(s.url)}"
                                 title="Re-analyze">
                                 <i class="fa-solid fa-arrows-rotate text-xs"></i>
                             </button>
@@ -736,6 +747,10 @@ function renderHistory(d) {
         <div class="px-4 py-3 border-t border-white/[0.04] text-[11px] text-gray-600">
             Showing ${scans.length} most recent scans
         </div>`;
+
+    wrap.querySelectorAll('[data-reanalyze]').forEach(btn => {
+        btn.addEventListener('click', () => reAnalyze(btn.dataset.reanalyze));
+    });
 }
 
 function reAnalyze(url) {

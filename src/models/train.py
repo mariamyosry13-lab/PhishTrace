@@ -18,7 +18,8 @@ os.makedirs(MODELS_DIR, exist_ok=True)
 
 FEATURE_COLS = [
     "url_length", "num_dots", "num_hyphens", "num_underscores", "num_slashes",
-    "num_at", "num_question", "num_equals", "num_percent", "num_digits",
+    "num_at", "num_question", "num_equals", "num_percent",
+    "num_digits_in_domain", "num_digits_in_path", "last_path_segment_is_integer",
     "has_ip", "has_https", "num_subdomains",
     "hostname_length", "path_length", "double_slash", "has_at_in_url",
     "num_suspicious_words"
@@ -43,21 +44,22 @@ print(f"Phishing  : {phishing_count:,} ({phishing_count/total*100:.1f}%)")
 print(f"Legit     : {legit_count:,} ({legit_count/total*100:.1f}%)")
 
 # ── Split ───────────────────────────────────────────────────────────────────
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y
+indices = np.arange(len(df))
+train_idx, test_idx = train_test_split(
+    indices, test_size=0.2, random_state=42, stratify=y
 )
+X_train, X_test = X[train_idx], X[test_idx]
+y_train, y_test = y[train_idx], y[test_idx]
 print(f"\nTrain: {len(X_train):,} | Test: {len(X_test):,}")
 
-np.save(os.path.join(MODELS_DIR, "test_indices.npy"),
-        np.where(np.isin(np.arange(len(df)),
-                 df.index[len(X_train):]))[0])
+np.save(os.path.join(MODELS_DIR, "test_indices.npy"), test_idx)
 
 # ── Scale ───────────────────────────────────────────────────────────────────
 scaler    = StandardScaler()
 X_train_s = scaler.fit_transform(X_train)
 X_test_s  = scaler.transform(X_test)
 joblib.dump(scaler, os.path.join(MODELS_DIR, "scaler.pkl"))
-print("Scaler saved ✅")
+print("Scaler saved")
 
 pos_weight = legit_count / max(phishing_count, 1)
 
@@ -69,12 +71,13 @@ models_dict = {
     ),
     "random_forest": RandomForestClassifier(
         n_estimators=200, max_depth=15, min_samples_leaf=5,
-        class_weight="balanced_subsample", random_state=42, n_jobs=-1
+        class_weight="balanced_subsample", random_state=42, n_jobs=1
     ),
     "xgboost": XGBClassifier(
-        n_estimators=200, max_depth=6, learning_rate=0.05,
-        subsample=0.8, colsample_bytree=0.8,
-        scale_pos_weight=pos_weight,
+        n_estimators=100, max_depth=4, learning_rate=0.05,
+        subsample=0.7, colsample_bytree=0.8,
+        scale_pos_weight=pos_weight, n_jobs=1,
+        tree_method="hist",
         random_state=42, eval_metric="logloss", verbosity=0
     ),
 }
@@ -88,7 +91,7 @@ for name, mdl in models_dict.items():
     print(f"Training: {name}")
 
     cv_f1 = cross_val_score(mdl, X_train_s, y_train,
-                            cv=cv, scoring="f1", n_jobs=-1)
+                            cv=cv, scoring="f1", n_jobs=1)
     print(f"  CV F1  : {cv_f1.mean():.4f} ± {cv_f1.std():.4f}")
 
     mdl.fit(X_train_s, y_train)
@@ -117,15 +120,17 @@ for name, mdl in models_dict.items():
 
     joblib.dump(mdl, os.path.join(MODELS_DIR, f"{name}.pkl"))
 
-    # ✅ FIX: بنخزن dict كامل مش string
     results[name] = {
-        "model"  : mdl,
-        "cv_f1"  : float(cv_f1.mean()),
-        "test_f1": float(f1),
-        "auc"    : float(auc),
-        "fpr"    : float(fpr),
-        "fp"     : fp,
-        "fn"     : fn,
+        "model"    : mdl,
+        "cv_f1"    : float(cv_f1.mean()),
+        "accuracy" : float(acc),
+        "precision": float(prec),
+        "recall"   : float(rec),
+        "test_f1"  : float(f1),
+        "auc"      : float(auc),
+        "fpr"      : float(fpr),
+        "fp"       : fp,
+        "fn"       : fn,
     }
 
 # ── Best model ──────────────────────────────────────────────────────────────
@@ -147,4 +152,22 @@ print(f"  AUC      : {results[best_name]['auc']:.4f}")
 print(f"  FPR      : {results[best_name]['fpr']:.4f}")
 print(f"  FP       : {results[best_name]['fp']}  (safe URLs wrongly flagged)")
 print(f"  FN       : {results[best_name]['fn']}  (phishing missed)")
-print("\nAll models saved ✅")
+
+import json
+best = results[best_name]
+eval_results = {
+    "model"    : best_name,
+    "accuracy" : round(best["accuracy"],  4),
+    "precision": round(best["precision"], 4),
+    "recall"   : round(best["recall"],    4),
+    "f1"       : round(best["test_f1"],   4),
+    "auc"      : round(best["auc"],       4),
+    "fpr"      : round(best["fpr"],       4),
+    "fp"       : best["fp"],
+    "fn"       : best["fn"],
+}
+eval_path = os.path.join(MODELS_DIR, "evaluation_results.json")
+with open(eval_path, "w") as f:
+    json.dump(eval_results, f, indent=2)
+print(f"\nEvaluation results saved -> {eval_path}")
+print("\nAll models saved")
