@@ -41,6 +41,7 @@ from sklearn.metrics import (
     roc_curve, auc,
     precision_score, recall_score, f1_score, accuracy_score,
 )
+from sklearn.model_selection import train_test_split
 
 warnings.filterwarnings("ignore")
 
@@ -88,12 +89,36 @@ y = df["label"].values
 
 scaler = joblib.load(MODELS_DIR / "scaler.pkl")
 
-from sklearn.model_selection import train_test_split
-_, X_test_raw, _, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y
-)
+test_indices_path = MODELS_DIR / "test_indices.npy"
+if test_indices_path.exists():
+    test_idx = np.load(test_indices_path)
+    if test_idx.ndim != 1:
+        test_idx = np.asarray(test_idx).reshape(-1)
+    n = len(df)
+    if test_idx.size == 0 or test_idx.min() < 0 or test_idx.max() >= n:
+        raise ValueError(
+            f"{test_indices_path} does not match current features CSV ({n} rows). "
+            "Re-run train.py after rebuilding phishtrace_features.csv."
+        )
+    X_test_raw = X[test_idx]
+    y_test = y[test_idx]
+    print(
+        f"Test set: {len(y_test)} rows from test_indices.npy "
+        f"(matches train.py holdout) | Phishing: {y_test.sum()} | Legit: {(y_test == 0).sum()}"
+    )
+else:
+    print(
+        "WARNING: models/test_indices.npy not found — using train_test_split "
+        "(test rows may not match the set used during training). "
+        "Run train.py to write test_indices.npy.",
+        file=sys.stderr,
+    )
+    _, X_test_raw, _, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+    print(f"Test set: {len(y_test)} | Phishing: {y_test.sum()} | Legit: {(y_test == 0).sum()}")
+
 X_test = scaler.transform(X_test_raw)
-print(f"Test set: {len(y_test)} | Phishing: {y_test.sum()} | Legit: {(y_test==0).sum()}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
