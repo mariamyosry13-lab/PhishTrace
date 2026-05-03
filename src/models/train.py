@@ -1,5 +1,12 @@
 import json
+import sys
 from pathlib import Path
+
+_SRC = Path(__file__).resolve().parent.parent
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+
+from config import FEATURE_COLS
 
 import joblib
 import numpy as np
@@ -22,15 +29,6 @@ from xgboost import XGBClassifier
 ROOT         = Path(__file__).resolve().parent.parent.parent
 FEATURES_CSV = ROOT / "data" / "processed" / "phishtrace_features.csv"
 MODELS_DIR   = ROOT / "models"
-
-FEATURE_COLS = [
-    "url_length", "num_dots", "num_hyphens", "num_underscores", "num_slashes",
-    "num_at", "num_question", "num_equals", "num_percent",
-    "num_digits_in_domain", "num_digits_in_path", "last_path_segment_is_integer",
-    "has_ip", "has_https", "num_subdomains",
-    "hostname_length", "path_length", "double_slash",
-    "num_suspicious_words",
-]
 
 
 def main() -> None:

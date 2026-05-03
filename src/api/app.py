@@ -12,6 +12,7 @@ warnings.filterwarnings("ignore")
 # ── Add src to path ──────────────────────────────────────────────────────────
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from config import FEATURE_COLS
 from features.extract import extract_features
 from database.db import init_db, save_scan, get_history, get_dashboard_stats, get_campaigns
 from models import bert_classifier
@@ -50,16 +51,6 @@ BERT_WEIGHT = 0.40
 
 # ── Init DB ──────────────────────────────────────────────────────────────────
 init_db()
-
-# ── 19 features (the exact columns the model was trained on) ─────────────────
-FEATURE_COLS = [
-    "url_length", "num_dots", "num_hyphens", "num_underscores", "num_slashes",
-    "num_at", "num_question", "num_equals", "num_percent",
-    "num_digits_in_domain", "num_digits_in_path", "last_path_segment_is_integer",
-    "has_ip", "has_https", "num_subdomains",
-    "hostname_length", "path_length", "double_slash",
-    "num_suspicious_words"
-]
 
 # ── Model metrics from evaluation_results.json ───────────────────────────────
 def load_model_metrics():

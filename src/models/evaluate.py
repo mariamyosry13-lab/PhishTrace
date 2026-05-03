@@ -23,9 +23,9 @@ Usage
   python src/models/evaluate.py
 """
 
+import json
 import os
 import sys
-import json
 import warnings
 import numpy as np
 import pandas as pd
@@ -44,6 +44,12 @@ from sklearn.metrics import (
 
 warnings.filterwarnings("ignore")
 
+_SRC = Path(__file__).resolve().parent.parent
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+
+from config import FEATURE_COLS
+
 # ── Paths ─────────────────────────────────────────────────────────────────────
 ROOT         = Path(__file__).resolve().parent.parent.parent
 FEATURES_CSV = ROOT / "data" / "processed" / "phishtrace_features.csv"
@@ -53,15 +59,6 @@ REPORTS_DIR  = ROOT / "reports"
 
 FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-
-FEATURE_COLS = [
-    "url_length", "num_dots", "num_hyphens", "num_underscores", "num_slashes",
-    "num_at", "num_question", "num_equals", "num_percent",
-    "num_digits_in_domain", "num_digits_in_path", "last_path_segment_is_integer",
-    "has_ip", "has_https", "num_subdomains",
-    "hostname_length", "path_length", "double_slash",
-    "num_suspicious_words"
-]
 
 MODEL_FILES = {
     "Logistic Regression": "logistic_regression.pkl",
