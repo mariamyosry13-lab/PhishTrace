@@ -4,8 +4,8 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from features.extract import extract_features
-from features.unified_extractor import extract_all, ALL_FEATURE_COLS
+from features.extract import BRAND_NAMES, extract_features
+from features.unified_extractor import ALL_FEATURE_COLS, check_brand_impersonation, extract_all
 
 FEATURE_COLS = [
     "url_length", "num_dots", "num_hyphens", "num_underscores", "num_slashes",
@@ -64,6 +64,24 @@ class TestExtractFeatures(unittest.TestCase):
     def test_tld_not_suspicious_for_com(self):
         self.assertEqual(extract_features("https://example.com")["tld_suspicious"], 0)
 
+    def test_issue4_support_apple_suspicious_words_only_path_query(self):
+        # "support" is in SUSPICIOUS_WORDS but must not count when only in hostname
+        self.assertEqual(
+            extract_features("https://support.apple.com")["num_suspicious_words"],
+            0,
+        )
+
+    def test_issue5_num_slashes_counts_path_not_scheme(self):
+        # https://google.com → path "" or "/"; must not count "//" from scheme (3)
+        self.assertEqual(extract_features("https://google.com")["num_slashes"], 1)
+
+    def test_issue7_typosquat_hyphenated_brand_prefix(self):
+        self.assertEqual(extract_features("https://paypal-verify.com")["is_typosquat"], 1)
+
+    def test_issue11_brand_names_merged_count(self):
+        self.assertEqual(len(BRAND_NAMES), 32)
+        self.assertEqual(len(set(BRAND_NAMES)), 32)
+
 
 class TestUnifiedExtractor(unittest.TestCase):
 
@@ -76,6 +94,12 @@ class TestUnifiedExtractor(unittest.TestCase):
     def test_tld_suspicious_in_unified(self):
         f = extract_all("http://evil.xyz/page")
         self.assertEqual(f.get("tld_suspicious"), 1)
+
+    def test_issue10_brand_impersonation_google_de_registrable_domain(self):
+        self.assertEqual(check_brand_impersonation("https://google.de"), 0)
+
+    def test_issue10_brand_impersonation_paypal_co_uk(self):
+        self.assertEqual(check_brand_impersonation("https://paypal.co.uk"), 0)
 
 
 if __name__ == "__main__":

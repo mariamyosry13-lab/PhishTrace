@@ -119,7 +119,8 @@ def extract_features(url: str) -> dict:
         "num_dots"             : url.count("."),
         "num_hyphens"          : url.count("-"),
         "num_underscores"      : url.count("_"),
-        "num_slashes"          : path.count("/"),
+        # Path only (not scheme); bare netloc URLs have "" path — treat as "/" → 1 not 0/3
+        "num_slashes"          : (path if path else "/").count("/"),
         "num_at"               : url.count("@"),
         "num_question"         : url.count("?"),
         "num_equals"           : url.count("="),
