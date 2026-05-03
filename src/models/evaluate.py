@@ -36,6 +36,7 @@ import seaborn as sns
 import joblib
 import shap
 from pathlib import Path
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     confusion_matrix, classification_report,
     roc_curve, auc,
@@ -71,6 +72,23 @@ MODEL_FILES = {
 def _model_selection_score(metrics: dict) -> float:
     """Match train.py: test_f1 * (1 - fpr) — same rule used to choose best_model.pkl."""
     return float(metrics["f1"]) * (1.0 - float(metrics["fpr"]))
+
+
+def _shap_values_matrix(shap_vals):
+    """SHAP returns list or 3-D for binary classifiers — normalize to (n_samples, n_features)."""
+    if isinstance(shap_vals, list):
+        return np.asarray(shap_vals[1])
+    arr = np.asarray(shap_vals)
+    if arr.ndim == 3:
+        return arr[:, :, 1]
+    return arr
+
+
+def _use_tree_explainer(model) -> bool:
+    """True for sklearn tree ensembles (``estimators_``) and XGBoost (``get_booster``)."""
+    if hasattr(model, "estimators_"):
+        return True
+    return callable(getattr(model, "get_booster", None))
 
 
 THRESHOLD_DANGEROUS  = 0.75
@@ -334,23 +352,39 @@ error_type = (["False Positive"] * len(fp_idx) +
 
 print(f"  FP: {len(fp_idx)}  |  FN: {len(fn_idx)}")
 
-shap_explainer = shap.TreeExplainer(best_model)
-X_err          = X_test[error_idx]
-shap_vals      = shap_explainer.shap_values(X_err)
+X_err = X_test[error_idx]
+sv    = None
 
-if isinstance(shap_vals, list):
-    sv = shap_vals[1]
-elif shap_vals.ndim == 3:
-    sv = shap_vals[:, :, 1]
+if error_idx.size == 0:
+    print("  [skip] SHAP — no FP/FN samples in sample slice")
+elif _use_tree_explainer(best_model):
+    try:
+        explainer = shap.TreeExplainer(best_model)
+        sv = _shap_values_matrix(explainer.shap_values(X_err))
+    except Exception as exc:
+        print(f"  [warn] TreeExplainer failed: {exc}")
+elif isinstance(best_model, LogisticRegression):
+    try:
+        bg = X_test[: min(500, len(X_test))]
+        explainer = shap.LinearExplainer(best_model, bg)
+        sv = _shap_values_matrix(explainer.shap_values(X_err))
+    except Exception as exc:
+        print(f"  [warn] LinearExplainer failed: {exc}")
 else:
-    sv = shap_vals
+    print(
+        "  [skip] SHAP error explanations — model is not a tree ensemble/XGBoost "
+        "(TreeExplainer) or LogisticRegression (LinearExplainer)"
+    )
 
 rows = []
 for i, (idx, err_type) in enumerate(zip(error_idx, error_type)):
-    top2   = np.argsort(np.abs(sv[i]))[::-1][:2]
-    reason = " | ".join(
-        f"{FEATURE_COLS[j]}({sv[i][j]:+.3f})" for j in top2
-    )
+    if sv is not None:
+        top2 = np.argsort(np.abs(sv[i]))[::-1][:2]
+        reason = " | ".join(
+            f"{FEATURE_COLS[j]}({sv[i][j]:+.3f})" for j in top2
+        )
+    else:
+        reason = "(SHAP unavailable for this model)"
     row = {
         "error_type"       : err_type,
         "true_label"       : int(y_test[idx]),
