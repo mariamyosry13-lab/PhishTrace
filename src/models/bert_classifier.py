@@ -1,4 +1,6 @@
-import warnings
+import logging
+
+logger = logging.getLogger(__name__)
 
 _pipeline = None
 _available = False
@@ -27,9 +29,12 @@ def load() -> None:
                 max_length=512,
             )
         _available = True
-        print("BERT phishing classifier loaded.")
+        logger.info("BERT phishing classifier loaded.")
     except Exception as exc:
-        warnings.warn(f"BERT classifier unavailable — falling back to RF only: {exc}")
+        logger.warning(
+            "BERT classifier unavailable — falling back to RF only: %s",
+            exc,
+        )
         _available = False
 
 
