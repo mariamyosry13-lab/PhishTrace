@@ -217,7 +217,8 @@ if not all_results:
 # ═══════════════════════════════════════════════════════════════════════════════
 print("\n── ROC curves ───────────────────────────────────────────────────────────")
 fig, ax = plt.subplots(figsize=(7, 5))
-colors  = ["#185FA5", "#3B6D11", "#BA7517"]
+n_curves = len(all_fpr_tpr)
+colors = sns.color_palette("husl", n_colors=max(n_curves, 1))
 
 for (name, (fpr_arr, tpr_arr, roc_auc)), color in zip(all_fpr_tpr.items(), colors):
     ax.plot(fpr_arr, tpr_arr, color=color, lw=1.8,
