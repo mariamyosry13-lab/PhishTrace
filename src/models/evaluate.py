@@ -50,7 +50,11 @@ _SRC = Path(__file__).resolve().parent.parent
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from config import FEATURE_COLS
+from config import (
+    FEATURE_COLS,
+    THRESHOLD_DANGEROUS,
+    THRESHOLD_SUSPICIOUS,
+)
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 ROOT         = Path(__file__).resolve().parent.parent.parent
@@ -90,9 +94,6 @@ def _use_tree_explainer(model) -> bool:
         return True
     return callable(getattr(model, "get_booster", None))
 
-
-THRESHOLD_DANGEROUS  = 0.75
-THRESHOLD_SUSPICIOUS = 0.45
 
 # ── Load data & scaler ────────────────────────────────────────────────────────
 print("Loading data...")
