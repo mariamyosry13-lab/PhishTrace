@@ -25,8 +25,8 @@ Usage
 
 import json
 import os
-import sys
 import warnings
+from sys import path as _syspath, stderr
 import numpy as np
 import pandas as pd
 import matplotlib
@@ -47,8 +47,8 @@ from sklearn.model_selection import train_test_split
 warnings.filterwarnings("ignore")
 
 _SRC = Path(__file__).resolve().parent.parent
-if str(_SRC) not in sys.path:
-    sys.path.insert(0, str(_SRC))
+if str(_SRC) not in _syspath:
+    _syspath.insert(0, str(_SRC))
 
 from config import (
     FEATURE_COLS,
@@ -130,7 +130,7 @@ else:
         "WARNING: models/test_indices.npy not found — using train_test_split "
         "(test rows may not match the set used during training). "
         "Run train.py to write test_indices.npy.",
-        file=sys.stderr,
+        file=stderr,
     )
     _, X_test_raw, _, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
@@ -207,7 +207,7 @@ if not all_results:
         + "\n".join(f"    • {fn}" for fn in MODEL_FILES.values())
         + "\n  Run training first (from project root):\n"
         "    python src/models/train.py\n",
-        file=sys.stderr,
+        file=stderr,
     )
     raise SystemExit(1)
 
