@@ -15,7 +15,7 @@ Produces ALL evaluation artefacts in one run:
     └── evaluation_report.txt
 
   models/
-    └── evaluation_results.json
+    └── evaluation_results.json  (flat metrics: model, accuracy, precision, recall, f1, fpr, fp, fn, auc)
 
 Usage
 -----
@@ -342,33 +342,39 @@ if len(fn_df):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  7. Save evaluation_results.json
+#  7. Save evaluation_results.json (flat schema — same as train.py / app.load_model_metrics)
 # ═══════════════════════════════════════════════════════════════════════════════
+if all_results:
+    best_model_name = max(all_results, key=lambda k: all_results[k]["f1"])
+    best_metrics    = all_results[best_model_name]
+else:
+    best_model_name = "(no models evaluated)"
+    best_metrics    = {
+        "accuracy": 0.0, "precision": 0.0, "recall": 0.0,
+        "f1": 0.0, "auc": 0.0, "fpr": 0.0, "fp": 0, "fn": 0,
+    }
+
 print("\n── Saving results JSON ──────────────────────────────────────────────────")
-best_model_name = max(all_results, key=lambda k: all_results[k]["f1"])
-best_metrics    = all_results[best_model_name]
+if all_results:
+    model_stem = Path(MODEL_FILES[best_model_name]).stem
+    results_json = {
+        "model"    : model_stem,
+        "accuracy" : best_metrics["accuracy"],
+        "precision": best_metrics["precision"],
+        "recall"   : best_metrics["recall"],
+        "f1"       : best_metrics["f1"],
+        "fpr"      : best_metrics["fpr"],
+        "fp"       : best_metrics["fp"],
+        "fn"       : best_metrics["fn"],
+        "auc"      : best_metrics["auc"],
+    }
 
-results_json = {
-    "best_model"            : best_model_name,
-    "accuracy"              : best_metrics["accuracy"],
-    "precision"             : best_metrics["precision"],
-    "recall"                : best_metrics["recall"],
-    "f1"                    : best_metrics["f1"],
-    "auc"                   : best_metrics["auc"],
-    "fpr"                   : best_metrics["fpr"],
-    "threshold_dangerous"   : THRESHOLD_DANGEROUS,
-    "threshold_suspicious"  : THRESHOLD_SUSPICIOUS,
-    "optimal_threshold_cost": round(float(best_t_cost), 4),
-    "fn_cost"               : FN_COST,
-    "fp_cost"               : FP_COST,
-    "test_set_size"         : int(len(y_test)),
-    "all_models"            : all_results,
-}
-
-json_path = MODELS_DIR / "evaluation_results.json"
-with open(json_path, "w", encoding="utf-8") as f:
-    json.dump(results_json, f, indent=2, ensure_ascii=False)
-print("  Saved evaluation_results.json")
+    json_path = MODELS_DIR / "evaluation_results.json"
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(results_json, f, indent=2, ensure_ascii=False)
+    print("  Saved evaluation_results.json")
+else:
+    print("  [skip] evaluation_results.json — no models evaluated")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

@@ -164,16 +164,17 @@ def main() -> None:
     print(f"  FN       : {results[best_name]['fn']}  (phishing missed)")
 
     best = results[best_name]
+    # Flat schema — must match evaluate.py and app.load_model_metrics() keys
     eval_results = {
         "model"    : best_name,
         "accuracy" : round(best["accuracy"],  4),
         "precision": round(best["precision"], 4),
         "recall"   : round(best["recall"],    4),
         "f1"       : round(best["test_f1"],   4),
-        "auc"      : round(best["auc"],       4),
         "fpr"      : round(best["fpr"],       4),
         "fp"       : best["fp"],
         "fn"       : best["fn"],
+        "auc"      : round(best["auc"],       4),
     }
     eval_path = MODELS_DIR / "evaluation_results.json"
     with open(eval_path, "w", encoding="utf-8") as f:
