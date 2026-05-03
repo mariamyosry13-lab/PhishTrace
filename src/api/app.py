@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from features.extract import extract_features
 from database.db import init_db, save_scan, get_history, get_dashboard_stats, get_campaigns
+from models import bert_classifier
 
 app = Flask(__name__,
             template_folder="../../frontend/templates",
@@ -43,16 +44,20 @@ except FileNotFoundError:
     campaign_scaler = None
     print("Campaign models not found — run clustering/campaign.py first")
 
+bert_classifier.load()
+RF_WEIGHT   = 0.60
+BERT_WEIGHT = 0.40
+
 # ── Init DB ──────────────────────────────────────────────────────────────────
 init_db()
 
-# ── 18 features ─────────────────────────────────────────────────────────────
+# ── 19 features (the exact columns the model was trained on) ─────────────────
 FEATURE_COLS = [
     "url_length", "num_dots", "num_hyphens", "num_underscores", "num_slashes",
     "num_at", "num_question", "num_equals", "num_percent",
     "num_digits_in_domain", "num_digits_in_path", "last_path_segment_is_integer",
     "has_ip", "has_https", "num_subdomains",
-    "hostname_length", "path_length", "double_slash", "has_at_in_url",
+    "hostname_length", "path_length", "double_slash",
     "num_suspicious_words"
 ]
 
@@ -82,7 +87,7 @@ def rule_based_boost(feats: dict, raw_score: float) -> tuple[float, list[str]]:
 
     lev = feats.get("min_levenshtein", 99)
     if feats.get("is_typosquat", 0):
-        boost += 0.20
+        boost += 0.15
         rules.append(f"⚠️ Typosquatting: الدومين شبيه جداً لدومين مشهور (Levenshtein={lev})")
 
     if feats.get("has_ip", 0):
@@ -111,13 +116,18 @@ def rule_based_boost(feats: dict, raw_score: float) -> tuple[float, list[str]]:
         rules.append(f"⚠️ الـ hostname يبدو عشوائي (entropy={entropy:.2f})")
 
     boost = min(boost, 0.30)
+    # Graduated dampening: a single rule signal on a low-confidence base score
+    # shouldn't be enough to push a URL into Dangerous.
     if raw_score < 0.40:
-        boost = boost * 0.3
+        boost = boost * 0.30
+    elif raw_score < 0.65:
+        boost = boost * 0.60
 
     # Dampen scores for URLs that have no red-flag signals at all.
     # When every rule check is clean, the ML score is driven by structural
     # features like num_digits from legitimate numeric IDs (e.g. /questions/11227809)
-    # rather than genuine phishing indicators — so we reduce confidence.
+    # or BERT reacting to topic keywords in the path (e.g. /wiki/Phishing).
+    # In both cases the URL is safe — reduce confidence unconditionally.
     is_clean = (
         feats.get("has_https", 0) == 1 and
         feats.get("tld_suspicious", 0) == 0 and
@@ -127,8 +137,8 @@ def rule_based_boost(feats: dict, raw_score: float) -> tuple[float, list[str]]:
         feats.get("brand_in_subdomain", 0) == 0 and
         feats.get("has_at_in_url", 0) == 0
     )
-    if is_clean and raw_score < 0.85:
-        raw_score = raw_score * 0.55
+    if is_clean:
+        raw_score = raw_score * 0.40
 
     return min(raw_score + boost, 1.0), rules
 
@@ -191,7 +201,14 @@ def analyze():
     X        = pd.DataFrame([feats])[FEATURE_COLS]
     X_scaled = scaler.transform(X)
 
-    raw_score                = float(model.predict_proba(X_scaled)[0][1])
+    rf_score   = float(model.predict_proba(X_scaled)[0][1])
+    bert_score = bert_classifier.predict_proba(url)
+
+    if bert_score is not None:
+        raw_score = RF_WEIGHT * rf_score + BERT_WEIGHT * bert_score
+    else:
+        raw_score = rf_score
+
     final_score, rule_alerts = rule_based_boost(feats, raw_score)
     verdict                  = get_verdict(final_score)
     shap_reasons             = get_shap_explanation(X_scaled)
@@ -214,6 +231,8 @@ def analyze():
         "campaign_id" : campaign_id,
         "score"       : round(final_score, 4),
         "raw_ml_score": round(raw_score, 4),
+        "rf_score"    : round(rf_score, 4),
+        "bert_score"  : round(bert_score, 4) if bert_score is not None else None,
         "percent"     : round(final_score * 100, 1),
         "verdict"     : verdict,
         "reasons"     : shap_reasons,

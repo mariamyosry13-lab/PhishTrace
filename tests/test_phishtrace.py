@@ -154,7 +154,7 @@ def rule_based_boost(feats: dict, raw_score: float) -> float:
     boost = 0.0
 
     if feats.get("is_typosquat", 0):
-        boost += 0.20
+        boost += 0.15
     if feats.get("has_ip", 0):
         boost += 0.15
     if feats.get("brand_in_subdomain", 0):
@@ -170,7 +170,9 @@ def rule_based_boost(feats: dict, raw_score: float) -> float:
 
     boost = min(boost, 0.30)
     if raw_score < 0.40:
-        boost = boost * 0.3
+        boost = boost * 0.30
+    elif raw_score < 0.65:
+        boost = boost * 0.60
 
     is_clean = (
         feats.get("has_https", 0) == 1 and
@@ -181,8 +183,8 @@ def rule_based_boost(feats: dict, raw_score: float) -> float:
         feats.get("brand_in_subdomain", 0) == 0 and
         feats.get("has_at_in_url", 0) == 0
     )
-    if is_clean and raw_score < 0.85:
-        raw_score = raw_score * 0.55
+    if is_clean:
+        raw_score = raw_score * 0.40
 
     return min(raw_score + boost, 1.0)
 
@@ -304,13 +306,13 @@ def test_model():
     scaler = joblib.load(scaler_path)
     model  = joblib.load(model_path)
 
-    # ✅ نفس الـ 20 columns اللي الموديل اتعلم عليها
+    # ✅ نفس الـ 19 columns اللي الموديل اتعلم عليها
     FEATURE_COLS = [
         "url_length","num_dots","num_hyphens","num_underscores","num_slashes",
         "num_at","num_question","num_equals","num_percent",
         "num_digits_in_domain","num_digits_in_path","last_path_segment_is_integer",
         "has_ip","has_https","num_subdomains",
-        "hostname_length","path_length","double_slash","has_at_in_url",
+        "hostname_length","path_length","double_slash",
         "num_suspicious_words",
     ]
 
@@ -478,7 +480,7 @@ def test_shap():
         "num_at","num_question","num_equals","num_percent",
         "num_digits_in_domain","num_digits_in_path","last_path_segment_is_integer",
         "has_ip","has_https","num_subdomains",
-        "hostname_length","path_length","double_slash","has_at_in_url",
+        "hostname_length","path_length","double_slash",
         "num_suspicious_words",
     ]
 

@@ -17,6 +17,7 @@ DB_PATH = os.environ.get("PHISHTRACE_DB", _DEFAULT_DB)
 
 
 def get_conn():
+    Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
@@ -81,6 +82,7 @@ def get_history(limit=50):
     result = []
     for r in rows:
         result.append({
+            "scan_id"     : r["id"],
             "id"          : r["id"],
             "url"         : r["url"],
             "verdict"     : r["verdict"],

@@ -17,7 +17,7 @@ FEATURE_COLS = [
     "num_at","num_question","num_equals","num_percent",
     "num_digits_in_domain","num_digits_in_path","last_path_segment_is_integer",
     "has_ip","has_https","num_subdomains",
-    "hostname_length","path_length","double_slash","has_at_in_url",
+    "hostname_length","path_length","double_slash",
     "num_suspicious_words"
 ]
 

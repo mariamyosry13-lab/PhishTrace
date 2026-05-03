@@ -5,9 +5,10 @@ __pycache__/
 .Python
 venv/
 .venv/
+venv311/
 *.egg-info/
 
-# Data 
+# Data
 data/raw/
 data/processed/
 *.csv
@@ -16,6 +17,7 @@ data/processed/
 # Models
 models/*.pkl
 models/*.joblib
+models/*.npy
 
 # IDE
 .vscode/
@@ -29,12 +31,5 @@ Thumbs.db
 # Jupyter
 .ipynb_checkpoints/
 
-venv311/
-
-venv311/
-
-venv311/
-
-models/*.pkl
-
-data/
+# Env
+.env
