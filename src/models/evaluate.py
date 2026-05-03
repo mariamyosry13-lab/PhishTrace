@@ -156,6 +156,17 @@ for model_name, model_file in MODEL_FILES.items():
     plt.close(fig)
     print(f"    Saved confusion_matrix_{safe_name}.png")
 
+if not all_results:
+    print(
+        "\nERROR: No per-model pickles were found — nothing to evaluate.\n"
+        f"  Expected at least one file in {MODELS_DIR}:\n"
+        + "\n".join(f"    • {fn}" for fn in MODEL_FILES.values())
+        + "\n  Run training first (from project root):\n"
+        "    python src/models/train.py\n",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  2. ROC curves
@@ -347,39 +358,29 @@ if len(fn_df):
 # ═══════════════════════════════════════════════════════════════════════════════
 #  7. Save evaluation_results.json (flat schema — same as train.py / app.load_model_metrics)
 # ═══════════════════════════════════════════════════════════════════════════════
-if all_results:
-    best_model_name = max(
-        all_results, key=lambda k: _model_selection_score(all_results[k])
-    )
-    best_metrics    = all_results[best_model_name]
-else:
-    best_model_name = "(no models evaluated)"
-    best_metrics    = {
-        "accuracy": 0.0, "precision": 0.0, "recall": 0.0,
-        "f1": 0.0, "auc": 0.0, "fpr": 0.0, "fp": 0, "fn": 0,
-    }
+best_model_name = max(
+    all_results, key=lambda k: _model_selection_score(all_results[k])
+)
+best_metrics = all_results[best_model_name]
 
 print("\n── Saving results JSON ──────────────────────────────────────────────────")
-if all_results:
-    model_stem = Path(MODEL_FILES[best_model_name]).stem
-    results_json = {
-        "model"    : model_stem,
-        "accuracy" : best_metrics["accuracy"],
-        "precision": best_metrics["precision"],
-        "recall"   : best_metrics["recall"],
-        "f1"       : best_metrics["f1"],
-        "fpr"      : best_metrics["fpr"],
-        "fp"       : best_metrics["fp"],
-        "fn"       : best_metrics["fn"],
-        "auc"      : best_metrics["auc"],
-    }
+model_stem = Path(MODEL_FILES[best_model_name]).stem
+results_json = {
+    "model"    : model_stem,
+    "accuracy" : best_metrics["accuracy"],
+    "precision": best_metrics["precision"],
+    "recall"   : best_metrics["recall"],
+    "f1"       : best_metrics["f1"],
+    "fpr"      : best_metrics["fpr"],
+    "fp"       : best_metrics["fp"],
+    "fn"       : best_metrics["fn"],
+    "auc"      : best_metrics["auc"],
+}
 
-    json_path = MODELS_DIR / "evaluation_results.json"
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(results_json, f, indent=2, ensure_ascii=False)
-    print("  Saved evaluation_results.json")
-else:
-    print("  [skip] evaluation_results.json — no models evaluated")
+json_path = MODELS_DIR / "evaluation_results.json"
+with open(json_path, "w", encoding="utf-8") as f:
+    json.dump(results_json, f, indent=2, ensure_ascii=False)
+print("  Saved evaluation_results.json")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
