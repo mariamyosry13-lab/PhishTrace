@@ -66,6 +66,12 @@ MODEL_FILES = {
     "XGBoost"             : "xgboost.pkl",
 }
 
+
+def _model_selection_score(metrics: dict) -> float:
+    """Match train.py: test_f1 * (1 - fpr) — same rule used to choose best_model.pkl."""
+    return float(metrics["f1"]) * (1.0 - float(metrics["fpr"]))
+
+
 THRESHOLD_DANGEROUS  = 0.75
 THRESHOLD_SUSPICIOUS = 0.45
 
@@ -342,7 +348,9 @@ if len(fn_df):
 #  7. Save evaluation_results.json (flat schema — same as train.py / app.load_model_metrics)
 # ═══════════════════════════════════════════════════════════════════════════════
 if all_results:
-    best_model_name = max(all_results, key=lambda k: all_results[k]["f1"])
+    best_model_name = max(
+        all_results, key=lambda k: _model_selection_score(all_results[k])
+    )
     best_metrics    = all_results[best_model_name]
 else:
     best_model_name = "(no models evaluated)"
