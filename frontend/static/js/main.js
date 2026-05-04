@@ -570,7 +570,7 @@ function renderCampaignsFromPayload(list, campaigns) {
         return;
     }
 
-    campaigns.sort((a, b) => ((b.scan_ids || []).length - (a.scan_ids || []).length);
+    campaigns.sort((a, b) => ((b.scan_ids || []).length - (a.scan_ids || []).length));
     const total = campaigns.reduce((s, c) => s + ((c.scan_ids || []).length), 0);
 
     list.innerHTML = `
