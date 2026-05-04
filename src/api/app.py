@@ -138,7 +138,7 @@ def assign_campaign(feats: dict) -> str | None:
     if campaign_model is None:
         return None
     X   = np.array([[feats.get(c, 0) for c in FEATURE_COLS]])
-    Xs  = campaign_scaler.transform(X)
+    Xs  = campaign_scaler.transform(X).astype(np.float32)
     cid = int(campaign_model.predict(Xs)[0])
     return f"campaign_{cid:03d}"
 
