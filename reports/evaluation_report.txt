@@ -3,15 +3,15 @@ PhishTrace — Model Evaluation Report
 ============================================================
 
 Best model  : Random Forest
-Test set    : 15,877 samples
+Test set    : 14,835 samples
 
 ── Best Model Metrics ──────────────────────────────
-  Accuracy   : 0.9409
-  Precision  : 0.9782
-  Recall     : 0.9474
-  F1         : 0.9625
-  AUC        : 0.9844
-  FPR        : 0.0856
+  Accuracy   : 0.9943
+  Precision  : 0.9968
+  Recall     : 0.9965
+  F1         : 0.9967
+  AUC        : 0.9987
+  FPR        : 0.0195
 
 ── Threshold Configuration ─────────────────────────
   Dangerous  : score >= 0.75
@@ -20,9 +20,9 @@ Test set    : 15,877 samples
   (FN cost=100, FP cost=1)
 
 ── All Models Comparison ───────────────────────────
-  Logistic Regression     F1=0.8187  AUC=0.8884  FPR=0.1632
-  Random Forest           F1=0.9625  AUC=0.9844  FPR=0.0856
-  XGBoost                 F1=0.9549  AUC=0.9843  FPR=0.0738
+  Logistic Regression     F1=0.8746  AUC=0.9505  FPR=0.1043
+  Random Forest           F1=0.9967  AUC=0.9987  FPR=0.0195
+  XGBoost                 F1=0.9949  AUC=0.9982  FPR=0.0300
 
 ── Error Analysis Summary ──────────────────────────
   False Positives : 20
