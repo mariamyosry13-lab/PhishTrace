@@ -3,6 +3,9 @@ import os
 import json
 import tempfile
 import unittest
+import gc
+import time
+import sqlite3
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -25,8 +28,28 @@ class TestFlaskApp(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        if os.path.exists(cls._db_path):
-            os.unlink(cls._db_path)
+        # Release references that may keep SQLite handles alive in tests.
+        cls.client = None
+        gc.collect()
+
+        if not os.path.exists(cls._db_path):
+            return
+
+        # On Windows, unlink can fail briefly if SQLite handle teardown lags.
+        # Retry after explicitly opening/closing a no-op connection to ensure
+        # all connections are finalized before file deletion.
+        for _ in range(10):
+            try:
+                os.unlink(cls._db_path)
+                break
+            except PermissionError:
+                try:
+                    conn = sqlite3.connect(cls._db_path)
+                    conn.close()
+                except sqlite3.Error:
+                    pass
+                gc.collect()
+                time.sleep(0.05)
 
     def test_health_endpoint(self):
         r = self.client.get("/health")
