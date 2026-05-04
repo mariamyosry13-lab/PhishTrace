@@ -3,11 +3,16 @@ import sys
 import joblib
 import numpy as np
 import pandas as pd
+import logging
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 import shap
 import warnings
-warnings.filterwarnings("ignore")
+warnings.filterwarnings(
+    "ignore",
+    message="X has feature names, but StandardScaler was fitted without feature names",
+    category=UserWarning,
+)
 
 # ── Add src to path ──────────────────────────────────────────────────────────
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -17,6 +22,7 @@ from features.extract import extract_features
 from database.db import init_db, save_scan, get_history, get_dashboard_stats, get_campaigns
 from models import bert_classifier
 
+logger = logging.getLogger(__name__)
 app = Flask(__name__,
             template_folder="../../frontend/templates",
             static_folder="../../frontend/static")
@@ -30,20 +36,27 @@ THRESHOLD_DANGEROUS  = 0.75
 THRESHOLD_SUSPICIOUS = 0.45
 
 # ── Load models once at startup ──────────────────────────────────────────────
-print("Loading models...")
-scaler    = joblib.load(os.path.join(MODELS_DIR, "scaler.pkl"))
-model     = joblib.load(os.path.join(MODELS_DIR, "best_model.pkl"))
-explainer = shap.TreeExplainer(model)
-print("Models loaded.")
+logger.info("Loading models...")
+try:
+    scaler    = joblib.load(os.path.join(MODELS_DIR, "scaler.pkl"))
+    model     = joblib.load(os.path.join(MODELS_DIR, "best_model.pkl"))
+    explainer = shap.TreeExplainer(model)
+except FileNotFoundError as exc:
+    logger.error("Required model file missing in %s: %s", MODELS_DIR, exc)
+    raise RuntimeError(f"Required model files not found in {MODELS_DIR}") from exc
+except Exception as exc:
+    logger.error("Failed loading model artifacts: %s", exc, exc_info=True)
+    raise RuntimeError("Failed to load required model artifacts at startup") from exc
+logger.info("Models loaded.")
 
 try:
     campaign_model  = joblib.load(os.path.join(MODELS_DIR, "campaign_model.pkl"))
     campaign_scaler = joblib.load(os.path.join(MODELS_DIR, "campaign_scaler.pkl"))
-    print("Campaign models loaded.")
+    logger.info("Campaign models loaded.")
 except FileNotFoundError:
     campaign_model  = None
     campaign_scaler = None
-    print("Campaign models not found — run clustering/campaign.py first")
+    logger.warning("Campaign models not found — run clustering/campaign.py first")
 
 bert_classifier.load()
 RF_WEIGHT   = 0.60
@@ -135,7 +148,7 @@ def rule_based_boost(feats: dict, raw_score: float) -> tuple[float, list[str]]:
 
 
 def assign_campaign(feats: dict) -> str | None:
-    if campaign_model is None:
+    if campaign_model is None or campaign_scaler is None:
         return None
     X   = np.array([[feats.get(c, 0) for c in FEATURE_COLS]])
     Xs  = campaign_scaler.transform(X).astype(np.float32)
@@ -183,7 +196,9 @@ def analyze():
     if request.method == "OPTIONS":
         return "", 200
 
-    data = request.get_json()
+    data = request.get_json(silent=True)
+    if data is None:
+        return jsonify({"error": "Invalid JSON payload"}), 400
     url  = (data.get("url") or "").strip()
     if not url:
         return jsonify({"error": "No URL provided"}), 400
@@ -235,7 +250,6 @@ def analyze():
 @app.route("/api/dashboard")
 def dashboard():
     stats = get_dashboard_stats()
-    stats["model_metrics"]   = MODEL_METRICS
     stats["false_positives"] = []
     return jsonify(stats)
 
@@ -248,6 +262,9 @@ def campaigns():
 @app.route("/api/history")
 def history():
     limit = request.args.get("limit", 50, type=int)
+    if limit is None:
+        limit = 50
+    limit = max(1, min(limit, 500))
     return jsonify({"scans": get_history(limit)})
 
 
