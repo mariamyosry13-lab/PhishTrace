@@ -48,12 +48,12 @@ class TestExplainability(unittest.TestCase):
         cls.shap = shap
         cls.joblib = joblib
         cls.pd = pd
-        cls.extract_features = extract_features
+        cls._extract_features = staticmethod(extract_features)
         cls.scaler = joblib.load(MODELS_DIR / "scaler.pkl")
         cls.model = joblib.load(MODELS_DIR / "best_model.pkl")
 
     def test_shap_smoke(self):
-        feats = self.extract_features("http://bankofegypt-login.evil.xyz/confirm")
+        feats = self._extract_features("http://bankofegypt-login.evil.xyz/confirm")
         X = self.pd.DataFrame([feats])[FEATURE_COLS]
         X_scaled = self.scaler.transform(X)
 
