@@ -1,5 +1,5 @@
 // ── Config ───────────────────────────────────────────────
-const API_BASE = 'http://127.0.0.1:5000';
+const API_BASE = window.location.origin;
 
 const ENDPOINTS = {
     analyze:   '/analyze',
@@ -24,7 +24,7 @@ function showToast(msg, type = 'info') {
     const t = document.createElement('div');
     t.className = `toast ${type}`;
     const icons = { error: 'fa-circle-xmark', success: 'fa-circle-check', info: 'fa-circle-info' };
-    t.innerHTML = `<i class="fa-solid ${icons[type] || icons.info} mr-2"></i><span>${msg}</span>`;
+    t.innerHTML = `<i class="fa-solid ${icons[type] || icons.info} mr-2"></i><span>${escapeHtml(msg)}</span>`;
     wrap.appendChild(t);
     setTimeout(() => t.remove(), 3700);
 }
@@ -167,7 +167,7 @@ function renderResults(d) {
     // Summary text — adds campaign info if available
     let summary = `The URL scored ${pct}% risk and was classified as "${cfg.text}".`;
     if (d.campaign_id) {
-        summary += ` It has been linked to <strong>${d.campaign_id}</strong>.`;
+        summary += ` It has been linked to <strong>${escapeHtml(d.campaign_id)}</strong>.`;
         document.getElementById('resultSummary').innerHTML = summary;
     } else {
         document.getElementById('resultSummary').textContent = summary;
@@ -222,8 +222,8 @@ function downloadReport() {
         const barW   = Math.min(Math.abs(r.contribution) * 400, 100);
         const barCol = isRisk ? '#e63946' : '#2ec4b6';
         return `<tr>
-            <td style="padding:7px 10px;border-bottom:1px solid #f0f0f0;font-size:12px;font-family:monospace;font-weight:500">${r.feature}</td>
-            <td style="padding:7px 10px;border-bottom:1px solid #f0f0f0;font-size:11px;color:#666">${r.text_en || ''}</td>
+            <td style="padding:7px 10px;border-bottom:1px solid #f0f0f0;font-size:12px;font-family:monospace;font-weight:500">${escapeHtml(r.feature)}</td>
+            <td style="padding:7px 10px;border-bottom:1px solid #f0f0f0;font-size:11px;color:#666">${escapeHtml(r.text_en || '')}</td>
             <td style="padding:7px 10px;border-bottom:1px solid #f0f0f0;width:140px">
                 <div style="background:#f0f0f0;border-radius:4px;height:8px">
                     <div style="background:${barCol};height:100%;border-radius:4px;width:${barW}%"></div>
@@ -238,7 +238,7 @@ function downloadReport() {
     // ── Features grid — all entries as 3-column grid cards ─
     const featEntries = Object.entries(feats).filter(([,v]) => v !== undefined && v !== null);
     const featCards = featEntries.map(([k, v]) => {
-        const isBad = (k === 'has_ip' && v) || (k === 'has_suspicious_word' && v) ||
+        const isBad = (k === 'has_ip' && v) || (k === 'num_suspicious_words' && v >= 1) ||
                       (k === 'has_at_in_url' && v) || (k === 'double_slash' && v) ||
                       (k === 'num_subdomains' && v >= 3) || (k === 'num_hyphens' && v >= 2) ||
                       (k === 'url_length' && v > 75) || (k === 'num_suspicious_words' && v >= 2);
@@ -247,9 +247,9 @@ function downloadReport() {
         return `<div style="padding:8px 12px;border:1px solid #f0f0f0;border-radius:8px;display:flex;align-items:center;justify-content:space-between;gap:8px">
             <div style="display:flex;align-items:center;gap:6px">
                 <div style="width:7px;height:7px;border-radius:50%;background:${dot};flex-shrink:0"></div>
-                <span style="font-size:11px;color:#666">${k}</span>
+                <span style="font-size:11px;color:#666">${escapeHtml(k)}</span>
             </div>
-            <span style="font-size:12px;font-weight:600;font-family:monospace;color:#1a1a1a">${v}</span>
+            <span style="font-size:12px;font-weight:600;font-family:monospace;color:#1a1a1a">${escapeHtml(v)}</span>
         </div>`;
     }).join('');
 
@@ -409,8 +409,8 @@ function renderExplanation(reasons, score, label) {
         row.className = 'flex items-center gap-4';
         row.innerHTML = `
             <div class="w-52 sm:w-64 text-left flex-shrink-0">
-                <div class="text-sm font-semibold font-mono">${item.feature}</div>
-                <div class="text-[11px] text-gray-500 leading-tight mt-0.5">${explanationText}</div>
+                <div class="text-sm font-semibold font-mono">${escapeHtml(item.feature)}</div>
+                <div class="text-[11px] text-gray-500 leading-tight mt-0.5">${escapeHtml(explanationText)}</div>
             </div>
             <div class="flex-1">
                 <div class="contrib-bar">
@@ -455,7 +455,7 @@ function renderDetails(d) {
                 <i class="fa-solid ${item.icon} text-[11px] text-gray-500"></i>
                 <span class="text-[11px] text-gray-500 font-semibold uppercase tracking-wider">${item.label}</span>
             </div>
-            <div class="text-sm font-mono break-all text-gray-300">${item.val}</div>`;
+            <div class="text-sm font-mono break-all text-gray-300">${escapeHtml(item.val)}</div>`;
         grid.appendChild(div);
     });
 }
@@ -525,7 +525,7 @@ function renderRecentScans(scans) {
                 <tbody>
                     ${scans.slice(0, 8).map(s => `<tr>
                         <td class="font-mono text-xs text-gray-400 max-w-xs truncate" title="${escapeHtml(s.url)}">${escapeHtml(s.url)}</td>
-                        <td><span class="text-xs px-2.5 py-1 rounded-lg font-semibold ${styles[s.verdict] || ''}">${s.verdict ?? '—'}</span></td>
+                        <td><span class="text-xs px-2.5 py-1 rounded-lg font-semibold ${styles[s.verdict] || ''}">${escapeHtml(s.verdict ?? '—')}</span></td>
                         <td class="font-mono text-sm">${s.score != null ? Math.round(s.score * 100) + '%' : '—'}</td>
                         <td class="text-xs text-gray-500">${s.scanned_at ? s.scanned_at.slice(0, 16).replace('T', ' ') : '—'}</td>
                     </tr>`).join('')}
@@ -550,31 +550,12 @@ async function loadCampaigns() {
 
 function renderCampaigns(d) {
     const list = document.getElementById('campaignsList');
-
-    // Campaigns page shows ONLY campaigns found from the user's own scans
-    // (URLs linked to a campaign_id during analysis)
-    // We fetch from /api/history and group by campaign_id
-    fetch(`${API_BASE}${ENDPOINTS.history}?limit=200`)
-        .then(r => r.json())
-        .then(histData => renderCampaignsFromHistory(list, histData.scans || []))
-        .catch(() => {
-            list.innerHTML = `<div class="empty-state">
-                <i class="fa-solid fa-triangle-exclamation"></i>
-                <p class="text-sm">Failed to load scan data</p>
-            </div>`;
-        });
+    const campaigns = d.campaigns || [];
+    renderCampaignsFromPayload(list, campaigns);
 }
 
-function renderCampaignsFromHistory(list, scans) {
-    // Group scans by campaign_id (only Dangerous/Suspicious with a campaign)
-    const grouped = {};
-    scans.forEach(s => {
-        if (!s.campaign_id) return;
-        if (!grouped[s.campaign_id]) grouped[s.campaign_id] = [];
-        grouped[s.campaign_id].push(s);
-    });
-
-    const campaignNames = Object.keys(grouped);
+function renderCampaignsFromPayload(list, campaigns) {
+    const campaignNames = campaigns.map(c => c.name).filter(Boolean);
 
     if (!campaignNames.length) {
         list.innerHTML = `
@@ -589,14 +570,13 @@ function renderCampaignsFromHistory(list, scans) {
         return;
     }
 
-    // Sort by count descending
-    campaignNames.sort((a, b) => grouped[b].length - grouped[a].length);
-    const total = campaignNames.reduce((s, k) => s + grouped[k].length, 0);
+    campaigns.sort((a, b) => ((b.scan_ids || []).length - (a.scan_ids || []).length);
+    const total = campaigns.reduce((s, c) => s + ((c.scan_ids || []).length), 0);
 
     list.innerHTML = `
         <div class="flex items-center gap-6 mb-6 px-1">
             <div class="text-sm text-gray-400">
-                <span class="text-white font-bold text-lg">${campaignNames.length}</span> campaigns detected in your scans
+                <span class="text-white font-bold text-lg">${campaigns.length}</span> campaigns detected in your scans
             </div>
             <div class="text-sm text-gray-400">
                 <span class="text-white font-bold text-lg">${total}</span> phishing URLs linked
@@ -606,21 +586,17 @@ function renderCampaignsFromHistory(list, scans) {
 
     const container = document.getElementById('campCards');
 
-    campaignNames.forEach(campName => {
-        const campScans = grouped[campName];
-        const count     = campScans.length;
-        const maxCount  = grouped[campaignNames[0]].length || 1;
+    campaigns.forEach(camp => {
+        const campName = camp.name || 'Unknown';
+        const count = (camp.scan_ids || []).length;
+        const maxCount = (campaigns[0].scan_ids || []).length || 1;
         const barPct    = Math.round((count / maxCount) * 100);
-        const lastSeen  = campScans[0]?.scanned_at?.slice(0, 16).replace('T', ' ') || '—';
+        const createdAt = camp.created_at ? String(camp.created_at).slice(0, 16).replace('T', ' ') : '—';
 
-        // Detect common features across URLs in this campaign
+        // Show a few static tags from persisted campaign metadata
         const tags = [];
-        const allHasIp   = campScans.every(s => s.features?.has_ip);
-        const allSuspWord = campScans.some(s => s.features?.has_suspicious_word);
-        const allSuspTld  = campScans.some(s => s.features?.tld_suspicious);
-        if (allHasIp)    tags.push({ label: 'IP-based',        color: '#e63946' });
-        if (allSuspWord) tags.push({ label: 'suspicious-words', color: '#e9c46a' });
-        if (allSuspTld)  tags.push({ label: 'suspicious-TLD',   color: '#e9c46a' });
+        if (count >= 10) tags.push({ label: 'large-cluster', color: '#e63946' });
+        if (count > 0) tags.push({ label: 'active', color: '#2ec4b6' });
 
         const tagsHtml = tags.map(t =>
             `<span class="text-[10px] px-2 py-0.5 rounded-md border mr-1.5 mt-1" style="color:${t.color};border-color:${t.color}44">${t.label}</span>`
@@ -635,8 +611,8 @@ function renderCampaignsFromHistory(list, scans) {
                         <i class="fa-solid fa-bullseye text-[#e9c46a] text-sm"></i>
                     </div>
                     <div>
-                        <div class="font-bold text-sm font-mono">${campName}</div>
-                        <div class="text-[11px] text-gray-500">${count} URL${count > 1 ? 's' : ''} · Last seen ${lastSeen}</div>
+                        <div class="font-bold text-sm font-mono">${escapeHtml(campName)}</div>
+                        <div class="text-[11px] text-gray-500">${count} URL${count > 1 ? 's' : ''} · Created ${escapeHtml(createdAt)}</div>
                     </div>
                 </div>
                 <div class="flex items-center gap-3">
@@ -649,13 +625,12 @@ function renderCampaignsFromHistory(list, scans) {
                 <div class="h-full rounded-full bg-[rgba(233,196,106,0.45)] transition-all duration-700" style="width:${barPct}%"></div>
             </div>
             <div class="camp-detail hidden mt-4 pt-4 border-t border-white/[0.04]">
-                <div class="text-[11px] text-gray-500 uppercase tracking-wider font-semibold mb-3">Scanned URLs in this campaign</div>
-                ${campScans.slice(0, 5).map(s => `
+                <div class="text-[11px] text-gray-500 uppercase tracking-wider font-semibold mb-3">Scan IDs in this campaign</div>
+                ${(camp.scan_ids || []).slice(0, 5).map(scanId => `
                     <div class="flex items-center justify-between py-2 border-b border-white/[0.03] gap-3">
-                        <span class="font-mono text-xs text-gray-400 truncate flex-1" title="${s.url}">${s.url}</span>
-                        <span class="text-xs font-mono font-bold ${s.verdict === 'Dangerous' ? 'text-[#f0a0a8]' : 'text-[#e9c46a]'} flex-shrink-0">${Math.round((s.score||0)*100)}%</span>
+                        <span class="font-mono text-xs text-gray-400 truncate flex-1">Scan #${escapeHtml(scanId)}</span>
                     </div>`).join('')}
-                ${campScans.length > 5 ? `<p class="text-[11px] text-gray-600 mt-2">+${campScans.length - 5} more URLs</p>` : ''}
+                ${(camp.scan_ids || []).length > 5 ? `<p class="text-[11px] text-gray-600 mt-2">+${(camp.scan_ids || []).length - 5} more scans</p>` : ''}
             </div>`;
         container.appendChild(card);
     });
@@ -686,7 +661,7 @@ async function loadHistory() {
 
 function renderHistory(d) {
     const wrap  = document.getElementById('historyTableWrap');
-    // API returns: scans[] with fields: id, url, score, verdict, timestamp, campaign_id
+    // API returns: scans[] with fields: scan_id, url, score, verdict, scanned_at, campaign_id
     const scans = d.scans || [];
 
     if (!scans.length) {
@@ -722,15 +697,15 @@ function renderHistory(d) {
                 <tbody>
                     ${scans.map(s => `
                     <tr>
-                        <td class="text-[11px] text-gray-600 font-mono">${s.id ?? '—'}</td>
+                        <td class="text-[11px] text-gray-600 font-mono">${s.scan_id ?? s.id ?? '—'}</td>
                         <td class="font-mono text-xs text-gray-400 max-w-xs truncate" title="${escapeHtml(s.url)}">${escapeHtml(s.url)}</td>
                         <td>
                             <span class="text-xs px-2.5 py-1 rounded-lg font-semibold ${styles[s.verdict] || ''}">
-                                ${s.verdict ?? '—'}
+                                ${escapeHtml(s.verdict ?? '—')}
                             </span>
                         </td>
                         <td class="font-mono text-sm">${s.score != null ? Math.round(s.score * 100) + '%' : '—'}</td>
-                        <td class="text-[11px] font-mono text-gray-500">${s.campaign_id || '—'}</td>
+                        <td class="text-[11px] font-mono text-gray-500">${escapeHtml(s.campaign_id || '—')}</td>
                         <td class="text-xs text-gray-500">${s.scanned_at ? s.scanned_at.slice(0, 16).replace('T', ' ') : '—'}</td>
                         <td>
                             <button
