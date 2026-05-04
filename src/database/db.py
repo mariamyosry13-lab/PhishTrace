@@ -7,6 +7,7 @@ PhishTrace — Database Layer (SQLite)
 import sqlite3
 import json
 import os
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -14,6 +15,16 @@ _DEFAULT_DB = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..", "data", "phishtrace.db")
 )
 DB_PATH = os.environ.get("PHISHTRACE_DB", _DEFAULT_DB)
+logger = logging.getLogger(__name__)
+
+
+def _safe_json_loads(value, default):
+    if value is None:
+        return default
+    try:
+        return json.loads(value)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return default
 
 
 def get_conn():
@@ -46,8 +57,14 @@ def init_db():
                 scan_ids    TEXT    DEFAULT '[]',
                 created_at  TEXT    NOT NULL
             );
+
+            CREATE INDEX IF NOT EXISTS idx_scans_verdict
+                ON scans (verdict);
+
+            CREATE INDEX IF NOT EXISTS idx_scans_scanned_at
+                ON scans (scanned_at);
         """)
-    print(f"DB initialised at: {DB_PATH}")
+    logger.info("DB initialised at: %s", DB_PATH)
 
 
 def save_scan(url, verdict, score, raw_score,
@@ -83,13 +100,12 @@ def get_history(limit=50):
     for r in rows:
         result.append({
             "scan_id"     : r["id"],
-            "id"          : r["id"],
             "url"         : r["url"],
             "verdict"     : r["verdict"],
             "score"       : r["score"],
             "raw_score"   : r["raw_score"],
-            "rule_alerts" : json.loads(r["rule_alerts"]),
-            "shap_reasons": json.loads(r["shap_reasons"]),
+            "rule_alerts" : _safe_json_loads(r["rule_alerts"], []),
+            "shap_reasons": _safe_json_loads(r["shap_reasons"], []),
             "campaign_id" : r["campaign_id"],
             "scanned_at"  : r["scanned_at"],
         })
@@ -108,37 +124,16 @@ def get_scan(scan_id):
         "verdict"     : row["verdict"],
         "score"       : row["score"],
         "raw_score"   : row["raw_score"],
-        "rule_alerts" : json.loads(row["rule_alerts"]),
-        "shap_reasons": json.loads(row["shap_reasons"]),
+        "rule_alerts" : _safe_json_loads(row["rule_alerts"], []),
+        "shap_reasons": _safe_json_loads(row["shap_reasons"], []),
         "campaign_id" : row["campaign_id"],
         "scanned_at"  : row["scanned_at"],
     }
 
 
 def get_stats():
-    """بنرجع إحصائيات مع model metrics من evaluation_results.json."""
-    from pathlib import Path
-
-    with get_conn() as conn:
-        total      = conn.execute("SELECT COUNT(*) FROM scans").fetchone()[0]
-        dangerous  = conn.execute("SELECT COUNT(*) FROM scans WHERE verdict='Dangerous'").fetchone()[0]
-        suspicious = conn.execute("SELECT COUNT(*) FROM scans WHERE verdict='Suspicious'").fetchone()[0]
-        safe       = conn.execute("SELECT COUNT(*) FROM scans WHERE verdict='Safe'").fetchone()[0]
-
-    eval_path = Path(__file__).resolve().parent.parent.parent / "models" / "evaluation_results.json"
-    if eval_path.exists():
-        with open(eval_path) as f:
-            model_metrics = json.load(f)
-    else:
-        model_metrics = {"accuracy": 0, "precision": 0, "recall": 0, "f1": 0, "fpr": 0}
-
-    return {
-        "total_scans"  : total,
-        "dangerous"    : dangerous,
-        "suspicious"   : suspicious,
-        "safe"         : safe,
-        "model_metrics": model_metrics,
-    }
+    """Backwards-compatible alias: dashboard stats are the single source."""
+    return get_dashboard_stats()
 
 
 def get_dashboard_stats():
@@ -155,6 +150,12 @@ def get_dashboard_stats():
         ).fetchall()
 
     timeline = [{"verdict": r["verdict"], "time": r["scanned_at"]} for r in timeline_rows]
+    eval_path = Path(__file__).resolve().parent.parent.parent / "models" / "evaluation_results.json"
+    if eval_path.exists():
+        with open(eval_path) as f:
+            model_metrics = _safe_json_loads(f.read(), {})
+    else:
+        model_metrics = {}
 
     return {
         "total_scans": total,
@@ -162,6 +163,7 @@ def get_dashboard_stats():
         "suspicious" : suspicious,
         "safe"       : safe,
         "timeline"   : timeline,
+        "model_metrics": model_metrics,
     }
 
 
@@ -175,7 +177,7 @@ def get_campaigns():
         {
             "id"        : r["id"],
             "name"      : r["name"],
-            "scan_ids"  : json.loads(r["scan_ids"]),
+            "scan_ids"  : _safe_json_loads(r["scan_ids"], []),
             "created_at": r["created_at"],
         }
         for r in rows
@@ -190,8 +192,12 @@ def save_campaigns(campaign_list):
         conn.executemany(
             "INSERT INTO campaigns (name, scan_ids, created_at) VALUES (?, ?, ?)",
             [
-                (c["campaign_name"], json.dumps([]), now)
+                (
+                    c["campaign_name"],
+                    json.dumps(c.get("scan_ids", []) if isinstance(c.get("scan_ids", []), list) else []),
+                    now,
+                )
                 for c in campaign_list
             ]
         )
-    print(f"[DB] Saved {len(campaign_list)} campaigns.")
+    logger.info("[DB] Saved %s campaigns.", len(campaign_list))
