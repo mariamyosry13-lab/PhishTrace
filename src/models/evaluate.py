@@ -1,27 +1,5 @@
-"""
-PhishTrace — Model Evaluation Script
-======================================
-Produces ALL evaluation artefacts in one run:
-
-  reports/figures/
-    ├── confusion_matrix_<model>.png
-    ├── roc_curves.png
-    ├── threshold_analysis.png
-    ├── threshold_cost.png
-    └── feature_importance_best.png
-
-  reports/
-    ├── error_analysis.csv
-    └── evaluation_report.txt
-
-  models/
-    └── evaluation_results.json  (flat metrics: model, accuracy, precision, recall, f1, fpr, fp, fn, auc)
-
-Usage
------
-  cd <project_root>
-  python src/models/evaluate.py
-"""
+"""Produces evaluation artifacts: confusion matrices, ROC curves, threshold analysis,
+feature importance, error analysis CSV, and evaluation_results.json."""
 
 import json
 import os
@@ -56,7 +34,6 @@ from config import (
     THRESHOLD_SUSPICIOUS,
 )
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
 ROOT         = Path(__file__).resolve().parent.parent.parent
 FEATURES_CSV = ROOT / "data" / "processed" / "phishtrace_features.csv"
 MODELS_DIR   = ROOT / "models"
@@ -96,7 +73,6 @@ def main():
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # ── Load data & scaler ────────────────────────────────────────────────────
     print("Loading data...")
     df = pd.read_csv(FEATURES_CSV)
 
@@ -141,9 +117,6 @@ def main():
     X_test = scaler.transform(X_test_raw)
 
 
-    # ═══════════════════════════════════════════════════════════════════════════
-    #  1. Per-model metrics + confusion matrices
-    # ═══════════════════════════════════════════════════════════════════════════
     print("\n── Per-model evaluation ─────────────────────────────────────────────────")
     all_results = {}
     all_fpr_tpr = {}
@@ -213,9 +186,6 @@ def main():
         raise SystemExit(1)
 
 
-    # ═══════════════════════════════════════════════════════════════════════════
-    #  2. ROC curves
-    # ═══════════════════════════════════════════════════════════════════════════
     print("\n── ROC curves ───────────────────────────────────────────────────────────")
     fig, ax = plt.subplots(figsize=(7, 5))
     n_curves = len(all_fpr_tpr)
@@ -239,9 +209,6 @@ def main():
     print("  Saved roc_curves.png")
 
 
-    # ═══════════════════════════════════════════════════════════════════════════
-    #  3. Threshold Analysis
-    # ═══════════════════════════════════════════════════════════════════════════
     print("\n── Threshold analysis ───────────────────────────────────────────────────")
     best_model  = joblib.load(MODELS_DIR / "best_model.pkl")
     y_prob_best = best_model.predict_proba(X_test)[:, 1]
@@ -279,9 +246,6 @@ def main():
     print("  Saved threshold_analysis.png")
 
 
-    # ═══════════════════════════════════════════════════════════════════════════
-    #  4. Cost-based threshold
-    # ═══════════════════════════════════════════════════════════════════════════
     print("\n── Cost-based threshold ─────────────────────────────────────────────────")
     FN_COST = 100
     FP_COST = 1
@@ -318,9 +282,6 @@ def main():
     print("  Saved threshold_cost.png")
 
 
-    # ═══════════════════════════════════════════════════════════════════════════
-    #  5. Feature importance
-    # ═══════════════════════════════════════════════════════════════════════════
     print("\n── Feature importance ───────────────────────────────────────────────────")
     try:
         importances = best_model.feature_importances_
@@ -341,9 +302,6 @@ def main():
         print("  [skip] Best model has no feature_importances_")
 
 
-    # ═══════════════════════════════════════════════════════════════════════════
-    #  6. Error Analysis
-    # ═══════════════════════════════════════════════════════════════════════════
     print("\n── Error analysis ───────────────────────────────────────────────────────")
     y_pred_best = best_model.predict(X_test)
 
@@ -417,9 +375,6 @@ def main():
             print(f"    [{cnt}x] {reason}")
 
 
-    # ═══════════════════════════════════════════════════════════════════════════
-    #  7. Save evaluation_results.json
-    # ═══════════════════════════════════════════════════════════════════════════
     best_model_name = max(
         all_results, key=lambda k: _model_selection_score(all_results[k])
     )
@@ -445,9 +400,6 @@ def main():
     print("  Saved evaluation_results.json")
 
 
-    # ═══════════════════════════════════════════════════════════════════════════
-    #  8. Human-readable report
-    # ═══════════════════════════════════════════════════════════════════════════
     print("\n── Writing evaluation_report.txt ────────────────────────────────────────")
     lines = [
         "=" * 60,

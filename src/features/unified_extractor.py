@@ -1,36 +1,5 @@
-"""
-PhishTrace — Unified Feature Extractor
-========================================
-Wraps extract.py and adds 3 extra features not present in the base extractor:
-
-  url_entropy       — Shannon entropy of URL characters
-                      (phishing URLs tend to have higher entropy due to
-                       random-looking strings and hex encoding)
-
-  brand_impersonation — 1 if a known brand name appears in a subdomain
-                        rather than the root domain
-                        (e.g. paypal.evil.com → PayPal in subdomain = suspicious)
-
-  path_depth        — number of '/' segments in the URL path
-                      (phishing pages often bury the form deep in the path)
-
-Note: tld_suspicious is computed by extract.py and inherited here unchanged.
-
-Usage
------
-from features.unified_extractor import extract_all, ALL_FEATURE_COLS
-
-feats = extract_all("http://bankofegypt-login.example.com/confirm/form")
-# → dict with all keys from extract_features plus 4 unified extras (see ALL_FEATURE_COLS)
-
-Notes
------
-- The 4 extra features are NOT used by the trained model (scaler + best_model.pkl)
-  which expects the original 19-column FEATURE_COLS.
-- To use them you must retrain after adding them to the feature matrix.
-- They ARE included in the /analyze API response under "features" for display only.
-- unified_extractor.extract_all() is the single entry-point for the API.
-"""
+"""Wraps extract_features() and adds url_entropy, brand_impersonation, and path_depth
+for the API response.  Only the 19 base features feed the ML model."""
 
 import re
 import math
@@ -39,15 +8,11 @@ from urllib.parse import urlparse
 from pathlib import Path
 import sys
 
-# ── Import base extractor ─────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 from features.extract import extract_features, SUSPICIOUS_WORDS, BRAND_NAMES  # noqa: E402
 
-# Backward-compatible name; same object as features.extract.KNOWN_BRANDS / BRAND_NAMES.
 KNOWN_BRANDS = BRAND_NAMES
-
-# ── Extra feature config ──────────────────────────────────────────────────────
 
 # 19 ML features (must match FEATURE_COLS in app.py / train.py)
 BASE_FEATURE_COLS = [
@@ -84,18 +49,7 @@ ALL_FEATURE_COLS = (
 )
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  Extra feature functions
-# ═══════════════════════════════════════════════════════════════════════════════
 def calc_entropy(url: str) -> float:
-    """
-    Shannon entropy of characters in the URL.
-    Higher entropy → more random-looking → more likely phishing.
-
-    Max theoretical entropy for printable ASCII ≈ 6.57 bits.
-    Typical legitimate URL: 3–4 bits.
-    Typical phishing URL:   4–5.5 bits.
-    """
     if not url:
         return 0.0
     freq = {}
@@ -106,15 +60,7 @@ def calc_entropy(url: str) -> float:
 
 
 def check_brand_impersonation(url: str) -> int:
-    """
-    Return 1 if a known brand appears in the hostname but NOT as the
-    registrable domain label (eTLD+1 domain part).
-
-    Uses the public suffix list (tldextract) so legitimate ccTLD and
-    multi-part suffix registrations are not flagged:
-      paypal.com, google.de, amazon.co.jp, paypal.co.uk, amazon.com.au → 0
-      paypal.evil.com, secure-paypal.net → 1
-    """
+    """1 if a known brand appears in the hostname but not as the registrable domain."""
     try:
         host = urlparse(url).hostname or ""
         if not host:
@@ -139,11 +85,6 @@ def check_brand_impersonation(url: str) -> int:
 
 
 def calc_path_depth(url: str) -> int:
-    """
-    Number of non-empty path segments.
-    /confirm/form/login → depth 3.
-    Phishing pages often bury the form deep (depth > 4).
-    """
     try:
         path   = urlparse(url).path or ""
         segs   = [s for s in path.split("/") if s]
@@ -152,24 +93,7 @@ def calc_path_depth(url: str) -> int:
         return 0
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  Main public function
-# ═══════════════════════════════════════════════════════════════════════════════
 def extract_all(url: str) -> dict:
-    """
-    Extract all features for a given URL.
-
-    The 19 base features are used by the trained model.
-    Rule-boost fields and unified extras are included for API display and reports.
-
-    Parameters
-    ----------
-    url : str
-
-    Returns
-    -------
-    dict with keys from ALL_FEATURE_COLS plus any other extract_features keys
-    """
     base   = extract_features(url)
     extras = {
         "url_entropy"        : calc_entropy(url),
@@ -180,10 +104,6 @@ def extract_all(url: str) -> dict:
 
 
 def get_feature_report(url: str) -> list[dict]:
-    """
-    Return a structured report of all features with values and human context.
-    Useful for display in the frontend or for debugging.
-    """
     feats = extract_all(url)
 
     explanations = {
@@ -233,9 +153,6 @@ def get_feature_report(url: str) -> list[dict]:
     return report
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  CLI demo
-# ═══════════════════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
     test_urls = [
         "https://bankofegypt-login.example.com/confirm/form",

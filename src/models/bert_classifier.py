@@ -1,16 +1,5 @@
-"""
-PhishTrace — BERT URL Classifier
-==================================
-Optional BERT-based phishing classifier that contributes 40% weight to the
-ensemble score.  When unavailable (transformers/torch not installed, model
-download failure, OOM), predict_proba() returns None and app.py falls back
-to the RF model alone.
-
-Model  : ealvaradob/bert-finetuned-phishing  (overridable via BERT_MODEL env)
-         Labels: LABEL_0 = legitimate, LABEL_1 = phishing
-Cache  : models/bert_cache/   (persists across restarts; ~400 MB)
-Device : CUDA GPU (fp16) → CPU (fp32) → disabled
-"""
+"""Optional BERT phishing classifier (40% weight in the ensemble).  Returns None
+when unavailable so callers always get a result.  Model: ealvaradob/bert-finetuned-phishing."""
 
 from __future__ import annotations
 
@@ -20,7 +9,6 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# ── Module-level state (mutated only by load()) ───────────────────────────────
 _pipeline  = None
 _available = False
 
@@ -35,21 +23,9 @@ def is_available() -> bool:
 
 
 def load() -> None:
-    """
-    Attempt to load the BERT phishing classifier once at startup.
-
-    Strategy
-    --------
-    1. If transformers/torch are missing → log warning, return (no raise).
-    2. Try GPU (device=0) with fp16 first to minimise VRAM usage.
-    3. On any GPU failure → retry on CPU with fp32.
-    4. On CPU failure → log error, leave _available=False.
-
-    Never raises; caller is always safe.
-    """
+    """Try GPU (fp16), then CPU (fp32).  Never raises; sets _available=False on failure."""
     global _pipeline, _available
 
-    # ── Dependency check ──────────────────────────────────────────────────────
     try:
         import torch
         from transformers import pipeline as hf_pipeline
@@ -107,23 +83,7 @@ def load() -> None:
 
 
 def predict_proba(url: str) -> float | None:
-    """
-    Return P(phishing) ∈ [0.0, 1.0], or None if BERT is unavailable.
-
-    The model outputs a label + confidence score.  We normalise so the return
-    value is always the phishing probability:
-
-      LABEL_1 / PHISHING   → return score directly
-      LABEL_0 / LEGITIMATE → return 1 - score
-
-    Parameters
-    ----------
-    url : str   Raw URL to classify (truncated to 512 chars before tokenisation).
-
-    Returns
-    -------
-    float | None
-    """
+    """Return P(phishing) in [0, 1], or None if BERT is unavailable."""
     if not _available or _pipeline is None:
         return None
 

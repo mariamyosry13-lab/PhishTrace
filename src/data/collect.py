@@ -1,23 +1,6 @@
-"""
-PhishTrace — Data Collection Pipeline
-======================================
-Documents how the raw dataset was assembled and provides functions
-to refresh the phishing feed from live sources.
+"""Merges raw phishing and legitimate URL datasets into data/processed/phishtrace_dataset.csv.
 
-Data sources (all in data/raw/):
-  dataset_phishing.csv      — merged phishing URLs (Kaggle + PhishTank)
-  openphish_feed.txt        — OpenPhish live feed (phishing only)
-  tranco_top10k.csv         — Tranco top-10k legitimate domains
-  verified_online.csv       — PhishTank verified online URLs
-
-Run
----
-  python src/data/collect.py                 # shows dataset stats
-  python src/data/collect.py --refresh       # downloads fresh PhishTank feed
-
-Output
-------
-  data/processed/phishtrace_dataset.csv     — merged, labelled, deduplicated
+Run with --refresh to pull fresh URLs from PhishTank before merging.
 """
 
 import os
@@ -30,22 +13,17 @@ import pandas as pd
 from pathlib import Path
 from urllib.parse import urlparse
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
 ROOT         = Path(__file__).resolve().parent.parent.parent
 RAW_DIR      = ROOT / "data" / "raw"
 PROCESSED    = ROOT / "data" / "processed"
 DATASET_OUT  = PROCESSED / "phishtrace_dataset.csv"
 PROCESSED.mkdir(parents=True, exist_ok=True)
 
-# ── Source definitions ────────────────────────────────────────────────────────
 PHISHTANK_URL = "https://data.phishtank.com/data/online-valid.json.gz"
 TRANCO_URL    = "https://tranco-list.eu/top-1m.csv.zip"
 
-# ── Curated legitimate URLs ───────────────────────────────────────────────────
-# Covers patterns the model misclassifies: numeric IDs in paths, dates in URLs,
-# long paths, many slashes — all features over-associated with phishing.
 EXTRA_LEGIT_URLS = [
-    # ── Stack Overflow (numeric question IDs) ─────────────────────────────────
+    # stack overflow
     "https://stackoverflow.com/questions/11227809/why-is-processing-a-sorted-array-faster",
     "https://stackoverflow.com/questions/231767/what-does-the-yield-keyword-do",
     "https://stackoverflow.com/questions/3294889/iterating-over-dictionaries-using-for-loops",
@@ -97,7 +75,7 @@ EXTRA_LEGIT_URLS = [
     "https://stackoverflow.com/questions/53513/how-do-i-check-if-a-list-is-empty",
     "https://stackoverflow.com/questions/2474015/getting-the-index-of-the-returned-max-or-min-item",
 
-    # ── GitHub (issues, PRs, commits) ─────────────────────────────────────────
+    # github
     "https://github.com/python/cpython/issues/91234",
     "https://github.com/python/cpython/issues/88123",
     "https://github.com/django/django/issues/15678",
@@ -139,7 +117,7 @@ EXTRA_LEGIT_URLS = [
     "https://github.com/ansible/ansible/issues/78234",
     "https://github.com/grafana/grafana/issues/56123",
 
-    # ── Wikipedia (articles with long paths) ──────────────────────────────────
+    # wikipedia
     "https://en.wikipedia.org/wiki/Python_(programming_language)",
     "https://en.wikipedia.org/wiki/Machine_learning",
     "https://en.wikipedia.org/wiki/Artificial_intelligence",
@@ -171,7 +149,7 @@ EXTRA_LEGIT_URLS = [
     "https://en.wikipedia.org/wiki/Git_(software)",
     "https://en.wikipedia.org/wiki/Docker_(software)",
 
-    # ── YouTube (video IDs — alphanumeric, 11 chars) ───────────────────────────
+    # youtube
     "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
     "https://www.youtube.com/watch?v=rfscVS0vtbw",
     "https://www.youtube.com/watch?v=_uQrJ0TkZlc",
@@ -193,7 +171,7 @@ EXTRA_LEGIT_URLS = [
     "https://www.youtube.com/watch?v=Ilg3gGewQ5U",
     "https://www.youtube.com/watch?v=OkmNXy7er84",
 
-    # ── Reddit (posts with alphanumeric IDs) ──────────────────────────────────
+    # reddit
     "https://www.reddit.com/r/Python/comments/10abc12/python_tips_for_beginners",
     "https://www.reddit.com/r/MachineLearning/comments/11xyz34/new_paper_on_transformers",
     "https://www.reddit.com/r/programming/comments/9qwe56/why_functional_programming_matters",
@@ -210,7 +188,7 @@ EXTRA_LEGIT_URLS = [
     "https://www.reddit.com/r/rust/comments/yza99/rust_for_beginners_roadmap",
     "https://www.reddit.com/r/devops/comments/bcd00/kubernetes_vs_docker_swarm",
 
-    # ── News articles (dates in paths, numeric IDs) ────────────────────────────
+    # news
     "https://www.bbc.com/news/technology-58927890",
     "https://www.bbc.com/news/world-us-canada-59876543",
     "https://www.bbc.com/news/business-57654321",
@@ -237,7 +215,7 @@ EXTRA_LEGIT_URLS = [
     "https://www.zdnet.com/article/best-cybersecurity-tools-2024",
     "https://www.csoonline.com/article/3715234/phishing-prevention-guide.html",
 
-    # ── Developer documentation ────────────────────────────────────────────────
+    # docs
     "https://docs.python.org/3/library/os.path.html",
     "https://docs.python.org/3/library/collections.html",
     "https://docs.python.org/3/library/itertools.html",
@@ -269,7 +247,7 @@ EXTRA_LEGIT_URLS = [
     "https://nextjs.org/docs/app/building-your-application/data-fetching",
     "https://vuejs.org/guide/essentials/reactivity-fundamentals",
 
-    # ── Microsoft / Azure / Windows docs ─────────────────────────────────────
+    # microsoft docs
     "https://learn.microsoft.com/en-us/azure/security/fundamentals/overview",
     "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide",
     "https://learn.microsoft.com/en-us/windows/win32/api/winbase",
@@ -281,7 +259,7 @@ EXTRA_LEGIT_URLS = [
     "https://learn.microsoft.com/en-us/visualstudio/get-started/csharp/tutorial-console",
     "https://learn.microsoft.com/en-us/azure/machine-learning/overview-what-is-azure-ml",
 
-    # ── Apple support ────────────────────────────────────────────────────────
+    # apple
     "https://support.apple.com/en-us/HT201229",
     "https://support.apple.com/en-us/HT204085",
     "https://support.apple.com/en-us/HT212927",
@@ -293,7 +271,7 @@ EXTRA_LEGIT_URLS = [
     "https://developer.apple.com/documentation/swiftui/text",
     "https://developer.apple.com/documentation/security/certificate_key_and_trust_services",
 
-    # ── Google developers / support ───────────────────────────────────────────
+    # google
     "https://developers.google.com/safe-browsing/v4/lookup-api",
     "https://developers.google.com/maps/documentation/javascript/overview",
     "https://cloud.google.com/security/products/threat-intelligence",
@@ -305,7 +283,7 @@ EXTRA_LEGIT_URLS = [
     "https://cloud.google.com/storage/docs/creating-buckets",
     "https://developers.google.com/gmail/api/reference/rest",
 
-    # ── Amazon AWS docs ───────────────────────────────────────────────────────
+    # aws
     "https://docs.aws.amazon.com/s3/latest/userguide/getting-started.html",
     "https://docs.aws.amazon.com/lambda/latest/dg/welcome.html",
     "https://docs.aws.amazon.com/ec2/latest/userguide/concepts.html",
@@ -317,7 +295,7 @@ EXTRA_LEGIT_URLS = [
     "https://repost.aws/knowledge-center/s3-presigned-url",
     "https://repost.aws/knowledge-center/lambda-function-timeout",
 
-    # ── Package registries (PyPI, npm) ────────────────────────────────────────
+    # package registries
     "https://pypi.org/project/requests/2.31.0",
     "https://pypi.org/project/numpy/1.26.4",
     "https://pypi.org/project/pandas/2.2.0",
@@ -339,7 +317,7 @@ EXTRA_LEGIT_URLS = [
     "https://www.npmjs.com/package/eslint/v/8.57.0",
     "https://www.npmjs.com/package/jest/v/29.7.0",
 
-    # ── Government / .gov sites ───────────────────────────────────────────────
+    # government
     "https://www.cisa.gov/topics/cyber-threats-and-advisories/phishing",
     "https://www.cisa.gov/resources-tools/resources/free-cybersecurity-services-and-tools",
     "https://www.ftc.gov/business-guidance/small-businesses/cybersecurity/phishing",
@@ -351,7 +329,7 @@ EXTRA_LEGIT_URLS = [
     "https://www.justice.gov/criminal-fraud/internet-fraud",
     "https://www.ic3.gov/Home/AnnualReports",
 
-    # ── Academic / .edu ───────────────────────────────────────────────────────
+    # academic
     "https://web.mit.edu/6.005/www/fa15/classes/10-abstract-data-types",
     "https://cs231n.stanford.edu/2024/syllabus.html",
     "https://www.cs.cornell.edu/courses/cs4780/2024sp",
@@ -363,7 +341,7 @@ EXTRA_LEGIT_URLS = [
     "https://arxiv.org/abs/1810.04805",
     "https://arxiv.org/abs/2303.08774",
 
-    # ── Hacker News ───────────────────────────────────────────────────────────
+    # hacker news
     "https://news.ycombinator.com/item?id=38987654",
     "https://news.ycombinator.com/item?id=37654321",
     "https://news.ycombinator.com/item?id=36543210",
@@ -375,28 +353,28 @@ EXTRA_LEGIT_URLS = [
     "https://news.ycombinator.com/item?id=39876543",
     "https://news.ycombinator.com/item?id=40123456",
 
-    # ── Archive.org / Wayback Machine ─────────────────────────────────────────
+    # archive.org
     "https://web.archive.org/web/20240101000000/https://www.python.org",
     "https://web.archive.org/web/20231215120000/https://www.github.com",
     "https://web.archive.org/web/20230601000000/https://stackoverflow.com",
     "https://archive.org/details/python_tutorial_2024",
     "https://archive.org/details/machine_learning_course",
 
-    # ── Docker Hub / container registries ────────────────────────────────────
+    # docker hub
     "https://hub.docker.com/r/python/tags",
     "https://hub.docker.com/r/nginx/tags",
     "https://hub.docker.com/r/postgres/tags",
     "https://hub.docker.com/r/redis/tags",
     "https://hub.docker.com/layers/python/library/python/3.11-slim/images/sha256-abc123",
 
-    # ── OWASP / security resources ────────────────────────────────────────────
+    # owasp
     "https://owasp.org/www-project-top-ten",
     "https://owasp.org/www-community/attacks/Phishing",
     "https://owasp.org/www-project-web-security-testing-guide",
     "https://cheatsheetseries.owasp.org/cheatsheets/Phishing_Prevention_Cheat_Sheet.html",
     "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html",
 
-    # ── Stack Exchange network ────────────────────────────────────────────────
+    # stack exchange
     "https://security.stackexchange.com/questions/249190/how-to-detect-phishing",
     "https://security.stackexchange.com/questions/238765/url-analysis-machine-learning",
     "https://datascience.stackexchange.com/questions/98765/random-forest-feature-importance",
@@ -408,19 +386,19 @@ EXTRA_LEGIT_URLS = [
     "https://networkengineering.stackexchange.com/questions/12345/dns-resolution-process",
     "https://crypto.stackexchange.com/questions/56789/tls-handshake-explained",
 
-    # ── LinkedIn / professional ───────────────────────────────────────────────
+    # linkedin
     "https://www.linkedin.com/learning/python-essential-training-14898805",
     "https://www.linkedin.com/learning/machine-learning-foundations-statistics",
     "https://www.linkedin.com/pulse/detecting-phishing-urls-machine-learning-article-12345678",
 
-    # ── Kaggle datasets / notebooks ───────────────────────────────────────────
+    # kaggle
     "https://www.kaggle.com/datasets/eswarchandt/phishing-website-detector",
     "https://www.kaggle.com/code/karnikakapoor/phishing-url-detection-ml",
     "https://www.kaggle.com/datasets/sid321axn/malicious-urls-dataset",
     "https://www.kaggle.com/code/shashwatwork/phishing-website-detection-rf",
     "https://www.kaggle.com/competitions/web-traffic-time-series-forecasting",
 
-    # ── Misc tech blogs / tutorials with numeric IDs ─────────────────────────
+    # tech blogs
     "https://towardsdatascience.com/phishing-url-detection-with-ml-5b4e6df2b37a",
     "https://medium.com/better-programming/python-url-feature-extraction-12345678",
     "https://dev.to/username/building-url-classifier-python-2024-abc123",
@@ -433,7 +411,7 @@ EXTRA_LEGIT_URLS = [
     "https://www.digitalocean.com/community/tutorials/how-to-use-flask-with-nginx",
     "https://www.digitalocean.com/community/tutorials/how-to-install-python-3-ubuntu-20-04",
 
-    # ── E-commerce (Amazon product pages) ────────────────────────────────────
+    # e-commerce
     "https://www.amazon.com/dp/B08N5WRWNW/ref=sr_1_1",
     "https://www.amazon.com/dp/B07FZ8S74R/ref=sr_1_2",
     "https://www.amazon.com/s?k=python+programming&ref=nb_sb_noss",
@@ -441,7 +419,7 @@ EXTRA_LEGIT_URLS = [
     "https://www.bestbuy.com/site/laptop/14987654.p",
     "https://www.newegg.com/p/N82E16824001234",
 
-    # ── Misc legitimate numeric-heavy URLs ───────────────────────────────────
+    # misc
     "https://www.imdb.com/title/tt0111161",
     "https://www.imdb.com/title/tt0068646",
     "https://www.imdb.com/title/tt0468569",
@@ -463,7 +441,7 @@ EXTRA_LEGIT_URLS = [
     "https://jsonplaceholder.typicode.com/posts/12345",
     "https://httpbin.org/status/200",
 
-    # ── More Stack Overflow ───────────────────────────────────────────────────
+    # more stack overflow
     "https://stackoverflow.com/questions/10048571/python-finding-a-trend-in-a-set-of-numbers",
     "https://stackoverflow.com/questions/11664443/python-list-comprehension-vs-map",
     "https://stackoverflow.com/questions/12435169/numpy-array-indexing",
@@ -485,7 +463,7 @@ EXTRA_LEGIT_URLS = [
     "https://stackoverflow.com/questions/28789452/python-reverse-dictionary-lookup",
     "https://stackoverflow.com/questions/29751557/exclude-a-character-set-in-python-regex",
 
-    # ── More GitHub ───────────────────────────────────────────────────────────
+    # more github
     "https://github.com/openai/openai-python/issues/890",
     "https://github.com/openai/whisper/issues/1234",
     "https://github.com/ollama/ollama/issues/2345",
@@ -507,7 +485,7 @@ EXTRA_LEGIT_URLS = [
     "https://github.com/celery/celery/issues/8765",
     "https://github.com/sqlalchemy/sqlalchemy/issues/10987",
 
-    # ── More news articles with dates in path ─────────────────────────────────
+    # more news
     "https://www.bbc.com/news/technology/2024/01/15/ai-phishing-detection",
     "https://techcrunch.com/2024/02/20/startup-raises-50-million-cybersecurity",
     "https://arstechnica.com/security/2024/03/10/new-phishing-campaign-targets-banks",
@@ -523,7 +501,7 @@ EXTRA_LEGIT_URLS = [
     "https://www.securityweek.com/phishing-url-analysis-machine-learning-approaches",
     "https://www.helpnetsecurity.com/2024/01/15/phishing-detection-tools",
 
-    # ── More docs with long numeric/structured paths ───────────────────────────
+    # more docs
     "https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestClassifier.html",
     "https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.StandardScaler.html",
     "https://scikit-learn.org/stable/modules/model_evaluation.html",
@@ -545,7 +523,7 @@ EXTRA_LEGIT_URLS = [
     "https://dev.mysql.com/doc/refman/8.0/en/select.html",
     "https://www.mongodb.com/docs/manual/reference/operator/aggregation/group",
 
-    # ── More e-commerce and product pages ─────────────────────────────────────
+    # more e-commerce
     "https://www.amazon.com/Fluent-Python-Concise-Effective-Programming/dp/1492056359",
     "https://www.amazon.com/Clean-Code-Handbook-Software-Craftsmanship/dp/0132350882",
     "https://www.amazon.com/Design-Patterns-Elements-Reusable-Object-Oriented/dp/0201633612",
@@ -557,7 +535,7 @@ EXTRA_LEGIT_URLS = [
     "https://www.bestbuy.com/site/apple-macbook-pro/6509652.p",
     "https://www.newegg.com/p/1B4-00Y5-00007",
 
-    # ── More academic / research papers ───────────────────────────────────────
+    # more academic
     "https://arxiv.org/abs/2010.11929",
     "https://arxiv.org/abs/2104.09864",
     "https://arxiv.org/abs/2106.09685",
@@ -574,7 +552,7 @@ EXTRA_LEGIT_URLS = [
     "https://link.springer.com/article/10.1007/s10994-023-06345-7",
     "https://scholar.google.com/scholar?q=phishing+url+detection+machine+learning",
 
-    # ── More Stack Overflow (final batch) ─────────────────────────────────────
+    # more stack overflow
     "https://stackoverflow.com/questions/30650474/python-rename-specific-column",
     "https://stackoverflow.com/questions/31645466/give-column-name-when-read-csv-file-pandas",
     "https://stackoverflow.com/questions/32400867/pandas-read-csv-from-url",
@@ -609,10 +587,6 @@ EXTRA_LEGIT_URLS = [
     "https://stackoverflow.com/questions/61286720/python-itertools-combinations",
 ]
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#  Loaders for each raw file
-# ═══════════════════════════════════════════════════════════════════════════════
 def load_phishing_csv(path: Path) -> pd.Series:
     """Load phishing URLs from a CSV. Filters by status=='phishing' when present."""
     df = pd.read_csv(path)
@@ -621,18 +595,15 @@ def load_phishing_csv(path: Path) -> pd.Series:
     col = next((c for c in df.columns if "url" in c.lower()), df.columns[0])
     return df[col].dropna().astype(str)
 
-
 def load_openphish(path: Path) -> pd.Series:
     """One URL per line in openphish_feed.txt."""
     lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
     return pd.Series([l.strip() for l in lines if l.strip().startswith("http")])
 
-
 def load_tranco(path: Path) -> pd.Series:
     """Tranco CSV: rank,domain (no header row) — convert domain → https://domain URL."""
     df = pd.read_csv(path, header=None, names=["rank", "domain"])
     return df["domain"].dropna().apply(lambda d: f"https://{d}")
-
 
 def load_verified_online(path: Path) -> pd.Series:
     """PhishTank verified_online CSV — column 'url' or first column."""
@@ -640,10 +611,6 @@ def load_verified_online(path: Path) -> pd.Series:
     col = next((c for c in df.columns if "url" in c.lower()), df.columns[0])
     return df[col].dropna().astype(str)
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#  Merge + deduplicate + label
-# ═══════════════════════════════════════════════════════════════════════════════
 def build_dataset() -> pd.DataFrame:
     """
     Merge all raw sources into one labelled DataFrame.
@@ -706,10 +673,6 @@ def build_dataset() -> pd.DataFrame:
     print(f"  Total    : {len(merged):>7,}")
     return merged
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#  Live refresh from PhishTank
-# ═══════════════════════════════════════════════════════════════════════════════
 def refresh_from_phishtank(out_path: Path | None = None) -> pd.Series:
     """
     Download the latest PhishTank verified phishing URLs.
@@ -743,10 +706,6 @@ def refresh_from_phishtank(out_path: Path | None = None) -> pd.Series:
         print(f"  [ERROR] Could not download PhishTank feed: {e}")
         return pd.Series(dtype=str)
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#  Dataset statistics
-# ═══════════════════════════════════════════════════════════════════════════════
 def print_stats(df: pd.DataFrame) -> None:
     total   = len(df)
     phish   = (df["label"] == 1).sum()
@@ -774,10 +733,6 @@ def print_stats(df: pd.DataFrame) -> None:
         print(f"    .{tld:<8} {cnt:>6,}")
     print("──────────────────────────────────────────────────────────────────────")
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#  Main
-# ═══════════════════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="PhishTrace data pipeline")
     parser.add_argument("--refresh", action="store_true",

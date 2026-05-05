@@ -25,7 +25,6 @@ from sklearn.model_selection import StratifiedKFold, cross_val_score, train_test
 from sklearn.preprocessing import StandardScaler
 from xgboost import XGBClassifier
 
-# ── Paths (project root, same pattern as evaluate.py) ───────────────────────
 ROOT         = Path(__file__).resolve().parent.parent.parent
 FEATURES_CSV = ROOT / "data" / "processed" / "phishtrace_features.csv"
 MODELS_DIR   = ROOT / "models"
@@ -34,7 +33,6 @@ MODELS_DIR   = ROOT / "models"
 def main() -> None:
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # ── Load data ──────────────────────────────────────────────────────────
     print("Loading features...")
     df = pd.read_csv(FEATURES_CSV)
 
@@ -52,7 +50,6 @@ def main() -> None:
     print(f"Phishing  : {phishing_count:,} ({phishing_count/total*100:.1f}%)")
     print(f"Legit     : {legit_count:,} ({legit_count/total*100:.1f}%)")
 
-    # ── Split ──────────────────────────────────────────────────────────────
     indices = np.arange(len(df))
     train_idx, test_idx = train_test_split(
         indices, test_size=0.2, random_state=42, stratify=y
@@ -63,7 +60,6 @@ def main() -> None:
 
     np.save(MODELS_DIR / "test_indices.npy", test_idx)
 
-    # ── Scale ──────────────────────────────────────────────────────────────
     scaler    = StandardScaler()
     X_train_s = scaler.fit_transform(X_train)
     X_test_s  = scaler.transform(X_test)
@@ -72,7 +68,6 @@ def main() -> None:
 
     pos_weight = legit_count / max(phishing_count, 1)
 
-    # ── Models ─────────────────────────────────────────────────────────────
     models_dict = {
         "logistic_regression": LogisticRegression(
             max_iter=1000, class_weight="balanced",
@@ -91,7 +86,6 @@ def main() -> None:
         ),
     }
 
-    # ✅ FIX: results بيخزن dicts مش strings
     results = {}
     cv      = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
@@ -142,15 +136,12 @@ def main() -> None:
             "fn"       : fn,
         }
 
-    # ── Best model ─────────────────────────────────────────────────────────
-    # ✅ FIX: score_model بتاخد dict صح دلوقتي
     def score_model(name: str) -> float:
         r = results[name]
         return r["test_f1"] * (1 - r["fpr"])
 
     best_name = max(results, key=score_model)
 
-    # احفظ الـ best model مباشرة من الـ results dict
     joblib.dump(results[best_name]["model"], MODELS_DIR / "best_model.pkl")
 
     print(f"\n{'='*50}")

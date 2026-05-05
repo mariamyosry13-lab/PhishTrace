@@ -14,16 +14,11 @@ warnings.filterwarnings(
     category=UserWarning,
 )
 
-# ── Add src to path ──────────────────────────────────────────────────────────
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-# Fix #3: import thresholds from config — no re-definition here
 from config import FEATURE_COLS, THRESHOLD_DANGEROUS, THRESHOLD_SUSPICIOUS
-# Fix #8: use extract_all so extra features (url_entropy, path_depth, brand_impersonation)
-#         appear in the API response under "features" for display
 from features.unified_extractor import extract_all
 from database.db import init_db, save_scan, get_history, get_dashboard_stats, get_campaigns
-# Fix #9: single authoritative assign_campaign from clustering module
 from clustering.campaign import assign_campaign
 from models import bert_classifier
 
@@ -33,10 +28,8 @@ app = Flask(__name__,
             static_folder="../../frontend/static")
 CORS(app, origins=["http://localhost:5000", "http://127.0.0.1:5000"])
 
-# ── Paths ────────────────────────────────────────────────────────────────────
 MODELS_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "models"))
 
-# ── Load ML model + SHAP explainer once at startup ───────────────────────────
 logger.info("Loading models...")
 try:
     scaler = joblib.load(os.path.join(MODELS_DIR, "scaler.pkl"))
@@ -48,8 +41,6 @@ except Exception as exc:
     logger.error("Failed loading model artifacts: %s", exc, exc_info=True)
     raise RuntimeError("Failed to load required model artifacts at startup") from exc
 
-# Fix #13: graceful SHAP fallback — TreeExplainer for RF/XGBoost,
-#          LinearExplainer for LogisticRegression, None if neither works.
 explainer = None
 try:
     explainer = shap.TreeExplainer(model)
@@ -72,10 +63,8 @@ bert_classifier.load()
 RF_WEIGHT   = 0.60
 BERT_WEIGHT = 0.40
 
-# ── Init DB ──────────────────────────────────────────────────────────────────
 init_db()
 
-# Fix #6: feature → human-readable English description for SHAP reasons
 _SHAP_TEXT = {
     "url_length"                  : "Total URL length",
     "num_dots"                    : "Dot count — many dots suggest nested subdomains",
@@ -98,7 +87,6 @@ _SHAP_TEXT = {
     "num_suspicious_words"        : "Count of phishing-related keywords in path",
 }
 
-# ── Model metrics from evaluation_results.json ───────────────────────────────
 def load_model_metrics():
     path = os.path.join(MODELS_DIR, "evaluation_results.json")
     if os.path.exists(path):
@@ -106,7 +94,6 @@ def load_model_metrics():
         with open(path) as f:
             data = json.load(f)
         return {
-            # Fix #7: include model name so the frontend can display it accurately
             "model"    : data.get("model",     "unknown"),
             "accuracy" : data.get("accuracy",  0),
             "precision": data.get("precision", 0),
@@ -126,7 +113,6 @@ def load_model_metrics():
 MODEL_METRICS = load_model_metrics()
 
 
-# ── Rule-based boost ─────────────────────────────────────────────────────────
 def rule_based_boost(feats: dict, raw_score: float) -> tuple[float, list[str]]:
     boost = 0.0
     rules = []
@@ -162,17 +148,14 @@ def rule_based_boost(feats: dict, raw_score: float) -> tuple[float, list[str]]:
         rules.append(f"⚠️ الـ hostname يبدو عشوائي (entropy={entropy:.2f})")
 
     boost = min(boost, 0.30)
-    # When the ML model already exceeds the Dangerous threshold but only structural
-    # signals are present (typosquat, suspicious TLD, phishing keywords) without any
-    # hard-evidence indicator (IP in URL, brand spoofed via subdomain, @ redirect),
-    # cap the score in the Suspicious band.  The model learned these patterns from
-    # confirmed attacks in training data, but structural similarity alone does not
-    # constitute confirmed danger.
+    # Cap to Suspicious when the ML fires on structural signals alone.
+    # Suspicious TLD + typosquat together count as hard evidence.
     hard_evidence = (
         feats.get("has_ip", 0) or
         feats.get("brand_in_subdomain", 0) or
         feats.get("has_at_in_url", 0) or
-        feats.get("num_subdomains", 0) > 2
+        feats.get("num_subdomains", 0) > 2 or
+        (feats.get("tld_suspicious", 0) and feats.get("is_typosquat", 0))
     )
     if raw_score >= THRESHOLD_DANGEROUS and not hard_evidence:
         raw_score = THRESHOLD_DANGEROUS - 0.05   # 0.70 — top of Suspicious band
@@ -184,11 +167,8 @@ def rule_based_boost(feats: dict, raw_score: float) -> tuple[float, list[str]]:
     elif raw_score < 0.65:
         boost = boost * 0.60
 
-    # Dampen scores for URLs that have no red-flag signals at all.
-    # When every rule check is clean, the ML score is driven by structural
-    # features like num_digits from legitimate numeric IDs (e.g. /questions/11227809)
-    # or BERT reacting to topic keywords in the path (e.g. /wiki/Phishing).
-    # In both cases the URL is safe — reduce confidence unconditionally.
+    # No red flags: ML score is noise from legitimate structural features
+    # (numeric IDs, topic keywords in path).  Cut confidence by 60%.
     is_clean = (
         feats.get("has_https", 0) == 1 and
         feats.get("tld_suspicious", 0) == 0 and
@@ -214,7 +194,6 @@ def get_verdict(score: float) -> str:
 
 
 def get_shap_explanation(features_scaled):
-    # Fix #13: return empty list if explainer is unavailable
     if explainer is None:
         return []
 
@@ -230,7 +209,6 @@ def get_shap_explanation(features_scaled):
     return [
         {
             "feature"     : FEATURE_COLS[i],
-            # Fix #6: add English description so the report download "Why it matters" column works
             "text_en"     : _SHAP_TEXT.get(FEATURE_COLS[i], FEATURE_COLS[i]),
             "contribution": round(float(sv[i]), 4),
             "direction"   : "increases" if sv[i] > 0 else "decreases",
@@ -239,7 +217,6 @@ def get_shap_explanation(features_scaled):
     ]
 
 
-# ── Routes ───────────────────────────────────────────────────────────────────
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -257,9 +234,6 @@ def analyze():
     if not url:
         return jsonify({"error": "No URL provided"}), 400
 
-    # Fix #8: extract_all adds url_entropy, path_depth, brand_impersonation
-    #         to the feats dict for display; FEATURE_COLS slice still picks
-    #         only the 19 ML features for the model.
     feats    = extract_all(url)
     X        = pd.DataFrame([feats])[FEATURE_COLS]
     X_scaled = scaler.transform(X)
@@ -292,7 +266,6 @@ def analyze():
         "url"         : url,
         "scan_id"     : scan_id,
         "campaign_id" : campaign_id,
-        # Fix #7: expose actual model name so the frontend never has to hardcode it
         "model_name"  : MODEL_METRICS.get("model", "unknown"),
         "score"       : round(final_score, 4),
         "raw_ml_score": round(raw_score, 4),
