@@ -162,9 +162,24 @@ def rule_based_boost(feats: dict, raw_score: float) -> tuple[float, list[str]]:
         rules.append(f"⚠️ الـ hostname يبدو عشوائي (entropy={entropy:.2f})")
 
     boost = min(boost, 0.30)
-    # Graduated dampening: a single rule signal on a low-confidence base score
-    # shouldn't be enough to push a URL into Dangerous.
-    if raw_score < 0.40:
+    # When the ML model already exceeds the Dangerous threshold but only structural
+    # signals are present (typosquat, suspicious TLD, phishing keywords) without any
+    # hard-evidence indicator (IP in URL, brand spoofed via subdomain, @ redirect),
+    # cap the score in the Suspicious band.  The model learned these patterns from
+    # confirmed attacks in training data, but structural similarity alone does not
+    # constitute confirmed danger.
+    hard_evidence = (
+        feats.get("has_ip", 0) or
+        feats.get("brand_in_subdomain", 0) or
+        feats.get("has_at_in_url", 0) or
+        feats.get("num_subdomains", 0) > 2
+    )
+    if raw_score >= THRESHOLD_DANGEROUS and not hard_evidence:
+        raw_score = THRESHOLD_DANGEROUS - 0.05   # 0.70 — top of Suspicious band
+        boost = 0.0
+    elif raw_score >= THRESHOLD_DANGEROUS:
+        boost = 0.0
+    elif raw_score < 0.40:
         boost = boost * 0.30
     elif raw_score < 0.65:
         boost = boost * 0.60
