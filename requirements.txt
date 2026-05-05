@@ -43,6 +43,9 @@ tzdata==2026.1
 urllib3==2.6.3
 Werkzeug==3.1.8
 xgboost==3.2.0
-# Optional: required for BERT ensemble scoring (heavy install ~2 GB)
-# transformers>=4.40.0
-# torch>=2.6.0  # torch >= 2.6 required to load model weights (CVE-2025-32434)
+# BERT ensemble scoring (installed — requires CUDA 12.8 wheel for GPU support)
+# CPU install:  pip install transformers torch
+# GPU install:  pip install torch==2.11.0+cu128 --index-url https://download.pytorch.org/whl/cu128
+#               (torch >= 2.6 required — CVE-2025-32434 weights_only default change)
+transformers==5.7.0
+torch==2.11.0+cu128

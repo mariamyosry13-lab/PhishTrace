@@ -4,17 +4,9 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from config import FEATURE_COLS
 from features.extract import BRAND_NAMES, extract_features
 from features.unified_extractor import ALL_FEATURE_COLS, check_brand_impersonation, extract_all
-
-FEATURE_COLS = [
-    "url_length", "num_dots", "num_hyphens", "num_underscores", "num_slashes",
-    "num_at", "num_question", "num_equals", "num_percent",
-    "num_digits_in_domain", "num_digits_in_path", "last_path_segment_is_integer",
-    "has_ip", "has_https", "num_subdomains",
-    "hostname_length", "path_length", "double_slash",
-    "num_suspicious_words",
-]
 
 
 class TestExtractFeatures(unittest.TestCase):

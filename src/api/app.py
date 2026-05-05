@@ -17,9 +17,14 @@ warnings.filterwarnings(
 # ── Add src to path ──────────────────────────────────────────────────────────
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from config import FEATURE_COLS
-from features.extract import extract_features
+# Fix #3: import thresholds from config — no re-definition here
+from config import FEATURE_COLS, THRESHOLD_DANGEROUS, THRESHOLD_SUSPICIOUS
+# Fix #8: use extract_all so extra features (url_entropy, path_depth, brand_impersonation)
+#         appear in the API response under "features" for display
+from features.unified_extractor import extract_all
 from database.db import init_db, save_scan, get_history, get_dashboard_stats, get_campaigns
+# Fix #9: single authoritative assign_campaign from clustering module
+from clustering.campaign import assign_campaign
 from models import bert_classifier
 
 logger = logging.getLogger(__name__)
@@ -31,32 +36,37 @@ CORS(app, origins=["http://localhost:5000", "http://127.0.0.1:5000"])
 # ── Paths ────────────────────────────────────────────────────────────────────
 MODELS_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "models"))
 
-# ── Thresholds ───────────────────────────────────────────────────────────────
-THRESHOLD_DANGEROUS  = 0.75
-THRESHOLD_SUSPICIOUS = 0.45
-
-# ── Load models once at startup ──────────────────────────────────────────────
+# ── Load ML model + SHAP explainer once at startup ───────────────────────────
 logger.info("Loading models...")
 try:
-    scaler    = joblib.load(os.path.join(MODELS_DIR, "scaler.pkl"))
-    model     = joblib.load(os.path.join(MODELS_DIR, "best_model.pkl"))
-    explainer = shap.TreeExplainer(model)
+    scaler = joblib.load(os.path.join(MODELS_DIR, "scaler.pkl"))
+    model  = joblib.load(os.path.join(MODELS_DIR, "best_model.pkl"))
 except FileNotFoundError as exc:
     logger.error("Required model file missing in %s: %s", MODELS_DIR, exc)
     raise RuntimeError(f"Required model files not found in {MODELS_DIR}") from exc
 except Exception as exc:
     logger.error("Failed loading model artifacts: %s", exc, exc_info=True)
     raise RuntimeError("Failed to load required model artifacts at startup") from exc
-logger.info("Models loaded.")
 
+# Fix #13: graceful SHAP fallback — TreeExplainer for RF/XGBoost,
+#          LinearExplainer for LogisticRegression, None if neither works.
+explainer = None
 try:
-    campaign_model  = joblib.load(os.path.join(MODELS_DIR, "campaign_model.pkl"))
-    campaign_scaler = joblib.load(os.path.join(MODELS_DIR, "campaign_scaler.pkl"))
-    logger.info("Campaign models loaded.")
-except FileNotFoundError:
-    campaign_model  = None
-    campaign_scaler = None
-    logger.warning("Campaign models not found — run clustering/campaign.py first")
+    explainer = shap.TreeExplainer(model)
+    logger.info("SHAP TreeExplainer ready.")
+except Exception:
+    try:
+        from sklearn.linear_model import LogisticRegression as _LR
+        if isinstance(model, _LR):
+            _bg       = np.zeros((1, len(FEATURE_COLS)))
+            explainer = shap.LinearExplainer(model, _bg)
+            logger.info("SHAP LinearExplainer ready (LogisticRegression model).")
+        else:
+            logger.warning("SHAP explainer unsupported for this model type — explanations disabled.")
+    except Exception as _exc:
+        logger.warning("SHAP explainer failed: %s — explanations disabled.", _exc)
+
+logger.info("Models loaded.")
 
 bert_classifier.load()
 RF_WEIGHT   = 0.60
@@ -64,6 +74,29 @@ BERT_WEIGHT = 0.40
 
 # ── Init DB ──────────────────────────────────────────────────────────────────
 init_db()
+
+# Fix #6: feature → human-readable English description for SHAP reasons
+_SHAP_TEXT = {
+    "url_length"                  : "Total URL length",
+    "num_dots"                    : "Dot count — many dots suggest nested subdomains",
+    "num_hyphens"                 : "Hyphen count — often used to mimic brand names",
+    "num_underscores"             : "Underscore count — rare in legitimate URLs",
+    "num_slashes"                 : "Slash count — deep path hierarchy",
+    "num_at"                      : "@ symbol — can redirect to a different host",
+    "num_question"                : "Query marker count",
+    "num_equals"                  : "Parameter assignment count",
+    "num_percent"                 : "URL-encoded character count",
+    "num_digits_in_domain"        : "Digits in domain name",
+    "num_digits_in_path"          : "Digits in path (often legitimate numeric IDs)",
+    "last_path_segment_is_integer": "Last path segment is a pure integer",
+    "has_ip"                      : "Raw IP address instead of a domain name",
+    "has_https"                   : "Uses HTTPS (reduces phishing risk)",
+    "num_subdomains"              : "Subdomain level count",
+    "hostname_length"             : "Hostname length",
+    "path_length"                 : "URL path length",
+    "double_slash"                : "Double slash in path — open redirect risk",
+    "num_suspicious_words"        : "Count of phishing-related keywords in path",
+}
 
 # ── Model metrics from evaluation_results.json ───────────────────────────────
 def load_model_metrics():
@@ -73,13 +106,22 @@ def load_model_metrics():
         with open(path) as f:
             data = json.load(f)
         return {
+            # Fix #7: include model name so the frontend can display it accurately
+            "model"    : data.get("model",     "unknown"),
             "accuracy" : data.get("accuracy",  0),
             "precision": data.get("precision", 0),
             "recall"   : data.get("recall",    0),
             "f1"       : data.get("f1",        0),
             "fpr"      : data.get("fpr",       0),
         }
-    return {"accuracy": 0.94, "precision": 0.94, "recall": 0.96, "f1": 0.9686, "fpr": 0.08}
+    return {
+        "model"    : "unknown",
+        "accuracy" : 0.94,
+        "precision": 0.94,
+        "recall"   : 0.96,
+        "f1"       : 0.9686,
+        "fpr"      : 0.08,
+    }
 
 MODEL_METRICS = load_model_metrics()
 
@@ -147,15 +189,6 @@ def rule_based_boost(feats: dict, raw_score: float) -> tuple[float, list[str]]:
     return min(raw_score + boost, 1.0), rules
 
 
-def assign_campaign(feats: dict) -> str | None:
-    if campaign_model is None or campaign_scaler is None:
-        return None
-    X   = np.array([[feats.get(c, 0) for c in FEATURE_COLS]])
-    Xs  = campaign_scaler.transform(X).astype(np.float32)
-    cid = int(campaign_model.predict(Xs)[0])
-    return f"campaign_{cid:03d}"
-
-
 def get_verdict(score: float) -> str:
     if score >= THRESHOLD_DANGEROUS:
         return "Dangerous"
@@ -166,6 +199,10 @@ def get_verdict(score: float) -> str:
 
 
 def get_shap_explanation(features_scaled):
+    # Fix #13: return empty list if explainer is unavailable
+    if explainer is None:
+        return []
+
     shap_values = explainer.shap_values(features_scaled)
     if isinstance(shap_values, list):
         sv = shap_values[1][0]
@@ -178,8 +215,10 @@ def get_shap_explanation(features_scaled):
     return [
         {
             "feature"     : FEATURE_COLS[i],
+            # Fix #6: add English description so the report download "Why it matters" column works
+            "text_en"     : _SHAP_TEXT.get(FEATURE_COLS[i], FEATURE_COLS[i]),
             "contribution": round(float(sv[i]), 4),
-            "direction"   : "increases" if sv[i] > 0 else "decreases"
+            "direction"   : "increases" if sv[i] > 0 else "decreases",
         }
         for i in top_idx
     ]
@@ -199,11 +238,14 @@ def analyze():
     data = request.get_json(silent=True)
     if data is None:
         return jsonify({"error": "Invalid JSON payload"}), 400
-    url  = (data.get("url") or "").strip()
+    url = (data.get("url") or "").strip()
     if not url:
         return jsonify({"error": "No URL provided"}), 400
 
-    feats    = extract_features(url)
+    # Fix #8: extract_all adds url_entropy, path_depth, brand_impersonation
+    #         to the feats dict for display; FEATURE_COLS slice still picks
+    #         only the 19 ML features for the model.
+    feats    = extract_all(url)
     X        = pd.DataFrame([feats])[FEATURE_COLS]
     X_scaled = scaler.transform(X)
 
@@ -235,6 +277,8 @@ def analyze():
         "url"         : url,
         "scan_id"     : scan_id,
         "campaign_id" : campaign_id,
+        # Fix #7: expose actual model name so the frontend never has to hardcode it
+        "model_name"  : MODEL_METRICS.get("model", "unknown"),
         "score"       : round(final_score, 4),
         "raw_ml_score": round(raw_score, 4),
         "rf_score"    : round(rf_score, 4),

@@ -19,7 +19,6 @@ FEATURES_CSV = ROOT / "data" / "processed" / "phishtrace_features.csv"
 CAMPAIGNS_CSV = ROOT / "data" / "processed" / "phishtrace_campaigns.csv"
 MODELS_DIR = ROOT / "models"
 FIGURES_DIR = ROOT / "reports" / "figures"
-FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
 # Add src to path for local imports (guard duplicate insert)
 _src_path = str(ROOT / "src")
@@ -80,8 +79,8 @@ def assign_campaign(features_dict: dict) -> str | None:
     if km is None or sc is None:
         return None
 
-    X = np.array([[features_dict.get(c, 0) for c in FEATURE_COLS]], dtype=float)
-    Xs = sc.transform(X)
+    X  = np.array([[features_dict.get(c, 0) for c in FEATURE_COLS]], dtype=np.float64)
+    Xs = sc.transform(X).astype(km.cluster_centers_.dtype)
     cid = int(km.predict(Xs)[0])
     return f"campaign_{cid:03d}"
 
@@ -136,6 +135,7 @@ def _choose_cluster_count(X_sample: np.ndarray) -> tuple[int, dict[int, float]]:
 
 
 def main() -> None:
+    FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     print("Loading features...")
     df = pd.read_csv(FEATURES_CSV)
 
@@ -158,7 +158,7 @@ def main() -> None:
     campaign_scaler = StandardScaler()
     campaign_scaler.fit(X)
 
-    X_scaled = np.zeros_like(X, dtype=np.float32)
+    X_scaled = np.empty_like(X, dtype=np.float64)
     for i in range(0, len(X), BATCH_SIZE):
         X_scaled[i : i + BATCH_SIZE] = campaign_scaler.transform(X[i : i + BATCH_SIZE])
 

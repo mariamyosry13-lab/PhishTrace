@@ -91,7 +91,7 @@ def digit_ratio(text: str) -> float:
 # ── Main extractor ────────────────────────────────────────────────────────────
 def extract_features(url: str) -> dict:
     try:
-        parsed   = urlparse(url if url.startswith("http") else "http://" + url)
+        parsed   = urlparse(url if "://" in url else "http://" + url)
         hostname = parsed.hostname or ""
         path     = parsed.path or ""
         query    = parsed.query or ""
@@ -134,8 +134,10 @@ def extract_features(url: str) -> dict:
             bool([s for s in path.split("/") if s]) and
             [s for s in path.split("/") if s][-1].isdigit()
         ),
-        "has_ip"               : int(bool(re.match(
-                                     r"http[s]?://\d+\.\d+\.\d+\.\d+", url))),
+        "has_ip"               : int(
+                                     bool(re.match(r"^\d{1,3}(?:\.\d{1,3}){3}$", hostname)) or
+                                     (":" in hostname)   # IPv6 addresses always contain ":"
+                                 ),
         "has_https"            : int(parsed.scheme == "https"),
 
         # ✅ FIX: بس num_suspicious_words بيبقى في الـ ML features
@@ -144,13 +146,12 @@ def extract_features(url: str) -> dict:
         "hostname_length"      : len(hostname),
         "path_length"          : len(path),
         "double_slash"         : int("//" in path),
-        "has_at_in_url"        : int("@" in url),
-
         # Only search path+query — excludes hostname so support.apple.com,
         # login.microsoft.com etc. don't trigger false positives.
         "num_suspicious_words" : sum(w in (path + query).lower() for w in SUSPICIOUS_WORDS),
 
         # ── ميزات extra (للـ rule_based_boost بس — مش للـ ML) ───────────────
+        "has_at_in_url"        : int("@" in url),
         "min_levenshtein"      : min_lev,
         "is_typosquat"         : int((1 <= min_lev <= 2) or stem_typosquat),
         "hostname_entropy"     : round(shannon_entropy(hostname), 4),
@@ -164,12 +165,15 @@ def extract_features(url: str) -> dict:
 
 def feature_names() -> list[str]:
     return [
+        # 19 ML features (must match FEATURE_COLS in config.py)
         "url_length", "num_dots", "num_hyphens", "num_underscores", "num_slashes",
         "num_at", "num_question", "num_equals", "num_percent",
         "num_digits_in_domain", "num_digits_in_path", "last_path_segment_is_integer",
         "has_ip", "has_https", "num_subdomains",
-        "hostname_length", "path_length", "double_slash", "has_at_in_url",
+        "hostname_length", "path_length", "double_slash",
         "num_suspicious_words",
+        # rule-boost features (not in ML model)
+        "has_at_in_url",
         "min_levenshtein", "is_typosquat", "hostname_entropy", "digit_ratio_hostname",
         "query_length", "num_params", "has_port", "tld_suspicious", "brand_in_subdomain",
     ]

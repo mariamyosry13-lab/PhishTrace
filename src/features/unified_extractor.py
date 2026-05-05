@@ -1,14 +1,11 @@
 """
 PhishTrace — Unified Feature Extractor
 ========================================
-Wraps extract.py and adds 4 extra features that improve model performance:
+Wraps extract.py and adds 3 extra features not present in the base extractor:
 
   url_entropy       — Shannon entropy of URL characters
                       (phishing URLs tend to have higher entropy due to
                        random-looking strings and hex encoding)
-
-  tld_suspicious    — 1 if TLD is associated with cheap/abused registrations
-                      (.xyz, .top, .click, .tk, .ml, .ga, .cf, .gq, .pw, ...)
 
   brand_impersonation — 1 if a known brand name appears in a subdomain
                         rather than the root domain
@@ -16,6 +13,8 @@ Wraps extract.py and adds 4 extra features that improve model performance:
 
   path_depth        — number of '/' segments in the URL path
                       (phishing pages often bury the form deep in the path)
+
+Note: tld_suspicious is computed by extract.py and inherited here unchanged.
 
 Usage
 -----
@@ -43,7 +42,7 @@ import sys
 # ── Import base extractor ─────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "src"))
-from features.extract import extract_features, SUSPICIOUS_WORDS, SUSPICIOUS_TLDS, BRAND_NAMES  # noqa: E402
+from features.extract import extract_features, SUSPICIOUS_WORDS, BRAND_NAMES  # noqa: E402
 
 # Backward-compatible name; same object as features.extract.KNOWN_BRANDS / BRAND_NAMES.
 KNOWN_BRANDS = BRAND_NAMES
@@ -62,6 +61,7 @@ BASE_FEATURE_COLS = [
 
 # Rule-boost / display fields from extract_features() (used by app.rule_based_boost)
 RULE_BOOST_FEATURE_COLS = [
+    "has_at_in_url",
     "min_levenshtein",
     "is_typosquat",
     "hostname_entropy",
@@ -69,12 +69,12 @@ RULE_BOOST_FEATURE_COLS = [
     "query_length",
     "num_params",
     "has_port",
+    "tld_suspicious",
     "brand_in_subdomain",
 ]
 
 EXTRA_FEATURE_COLS = [
     "url_entropy",
-    "tld_suspicious",
     "brand_impersonation",
     "path_depth",
 ]
@@ -103,17 +103,6 @@ def calc_entropy(url: str) -> float:
         freq[c] = freq.get(c, 0) + 1
     n = len(url)
     return round(-sum((cnt/n) * math.log2(cnt/n) for cnt in freq.values()), 4)
-
-
-def check_tld_suspicious(url: str) -> int:
-    """Return 1 if the TLD is in the suspicious list."""
-    try:
-        host  = urlparse(url).hostname or ""
-        parts = host.rstrip(".").split(".")
-        tld   = parts[-1].lower() if parts else ""
-        return int(tld in SUSPICIOUS_TLDS)
-    except Exception:
-        return 0
 
 
 def check_brand_impersonation(url: str) -> int:
@@ -184,7 +173,6 @@ def extract_all(url: str) -> dict:
     base   = extract_features(url)
     extras = {
         "url_entropy"        : calc_entropy(url),
-        "tld_suspicious"     : check_tld_suspicious(url),
         "brand_impersonation": check_brand_impersonation(url),
         "path_depth"         : calc_path_depth(url),
     }

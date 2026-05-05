@@ -25,7 +25,6 @@ import sys
 import argparse
 import gzip
 import json
-import time
 import requests
 import pandas as pd
 from pathlib import Path
@@ -630,8 +629,8 @@ def load_openphish(path: Path) -> pd.Series:
 
 
 def load_tranco(path: Path) -> pd.Series:
-    """Tranco CSV: rank,domain — convert domain → https://domain URL."""
-    df = pd.read_csv(path)
+    """Tranco CSV: rank,domain (no header row) — convert domain → https://domain URL."""
+    df = pd.read_csv(path, header=None, names=["rank", "domain"])
     return df["domain"].dropna().apply(lambda d: f"https://{d}")
 
 

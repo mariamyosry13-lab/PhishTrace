@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 FEATURES_CSV = ROOT / "data" / "processed" / "phishtrace_features.csv"
 MODELS_DIR = ROOT / "models"
 FIGURES_DIR = ROOT / "reports" / "figures"
-REPORT_PATH = ROOT / "reports" / "evaluation_report.txt"
+REPORT_PATH = ROOT / "reports" / "shap_report.txt"
 
 logger = logging.getLogger(__name__)
 

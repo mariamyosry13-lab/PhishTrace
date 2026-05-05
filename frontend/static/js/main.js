@@ -173,7 +173,9 @@ function renderResults(d) {
         document.getElementById('resultSummary').textContent = summary;
     }
 
-    document.getElementById('resultModel').innerHTML     = `<i class="fa-solid fa-brain mr-1"></i>Model: Random Forest`;
+    const _modelNames = { random_forest: 'Random Forest', xgboost: 'XGBoost', logistic_regression: 'Logistic Regression' };
+    const _modelDisplay = _modelNames[d.model_name] || d.model_name || 'ML Model';
+    document.getElementById('resultModel').innerHTML     = `<i class="fa-solid fa-brain mr-1"></i>Model: ${escapeHtml(_modelDisplay)}`;
     document.getElementById('resultTime').innerHTML      = `<i class="fa-solid fa-stopwatch mr-1"></i>Time: ${d._elapsed ?? '—'}ms`;
     document.getElementById('resultThreshold').innerHTML = `<i class="fa-solid fa-sliders mr-1"></i>Threshold: 0.75 / 0.45`;
 
@@ -215,6 +217,8 @@ function downloadReport() {
     const now        = new Date().toLocaleString();
     const verdictColor = { Dangerous:'#e63946', Suspicious:'#e9c46a', Safe:'#2ec4b6' }[verdict] || '#888';
     const verdictText  = verdict === 'Safe' ? 'Likely Safe' : verdict;
+    const _rptModelNames = { random_forest: 'Random Forest', xgboost: 'XGBoost', logistic_regression: 'Logistic Regression' };
+    const modelLabel = _rptModelNames[d.model_name] || d.model_name || 'ML Model';
 
     // ── SHAP rows ─────────────────────────────────────────
     const shapRows = reasons.map(r => {
@@ -300,7 +304,7 @@ function downloadReport() {
   <div class="report-meta">
     <div>Generated: ${now}</div>
     ${d.scan_id ? `<div>Scan ID: #${d.scan_id}</div>` : ''}
-    <div>Model: Random Forest &nbsp;·&nbsp; Threshold: 0.75 / 0.45</div>
+    <div>Model: ${escapeHtml(modelLabel)} &nbsp;·&nbsp; Threshold: 0.75 / 0.45</div>
   </div>
 </div>
 
@@ -312,7 +316,7 @@ function downloadReport() {
     <div class="pills">
       <span class="pill">Risk Score: ${score}%</span>
       <span class="pill">SHAP Explainability</span>
-      <span class="pill">Random Forest</span>
+      <span class="pill">${escapeHtml(modelLabel)}</span>
       ${safeCampaignId ? `<span class="pill pill-warn">⚑ ${safeCampaignId}</span>` : ''}
     </div>
   </div>
@@ -333,7 +337,7 @@ function downloadReport() {
 
 <div class="footer">
   PhishTrace &nbsp;·&nbsp; Graduation Project &nbsp;·&nbsp; Faculty of Engineering<br>
-  Random Forest &nbsp;·&nbsp; F1 = 96.86% &nbsp;·&nbsp; AUC = 98.17% &nbsp;·&nbsp; Test Set: 15,877 samples
+  ${escapeHtml(modelLabel)} &nbsp;·&nbsp; PhishTrace Analysis System
 </div>
 
 </body></html>`;
@@ -362,7 +366,8 @@ function renderFeatures(f) {
         { k: 'num_hyphens',          label: 'Hyphens',           icon: 'fa-minus',                fmt: v => v,              bad: v => v >= 2 },
         { k: 'num_dots',             label: 'Dots',              icon: 'fa-ellipsis',             fmt: v => v,              bad: v => v >= 4 },
         { k: 'path_length',          label: 'Path Length',       icon: 'fa-folder-open',          fmt: v => v + ' chars',   bad: v => v > 50 },
-        { k: 'num_digits',           label: 'Digits in URL',     icon: 'fa-hashtag',              fmt: v => v,              bad: v => v > 10 },
+        { k: 'num_digits_in_domain', label: 'Digits (domain)',    icon: 'fa-hashtag',              fmt: v => v,              bad: v => v > 5 },
+        { k: 'num_digits_in_path',   label: 'Digits (path)',      icon: 'fa-hashtag',              fmt: v => v,              bad: v => v > 10 },
         { k: 'has_at_in_url',        label: '@ in URL',          icon: 'fa-at',                   fmt: v => v ? 'Yes':'No', bad: v => !!v },
         { k: 'double_slash',         label: 'Double Slash',      icon: 'fa-slash',                fmt: v => v ? 'Yes':'No', bad: v => !!v },
         { k: 'num_suspicious_words', label: 'Suspicious Count',  icon: 'fa-triangle-exclamation', fmt: v => v,              bad: v => v >= 2 },
@@ -443,7 +448,8 @@ function renderDetails(d) {
         { label: 'Has IP Host',    icon: 'fa-server',       val: feats.has_ip ? 'Yes' : 'No' },
         { label: 'Subdomains',     icon: 'fa-layer-group',  val: feats.num_subdomains },
         { label: 'Path Length',    icon: 'fa-folder',       val: feats.path_length + ' characters' },
-        { label: 'Digit Count',    icon: 'fa-hashtag',      val: feats.num_digits },
+        { label: 'Digits (domain)',icon: 'fa-hashtag',      val: feats.num_digits_in_domain },
+        { label: 'Digits (path)', icon: 'fa-hashtag',      val: feats.num_digits_in_path },
         { label: 'Hyphen Count',   icon: 'fa-minus',        val: feats.num_hyphens },
     ];
     items.forEach(item => {
