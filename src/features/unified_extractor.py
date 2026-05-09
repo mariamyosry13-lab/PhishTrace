@@ -1,6 +1,3 @@
-"""Wraps extract_features() and adds url_entropy, brand_impersonation, and path_depth
-for the API response.  Only the 19 base features feed the ML model."""
-
 import re
 import math
 import tldextract
