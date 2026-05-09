@@ -54,5 +54,17 @@ src/
 frontend/               HTML / CSS / JS interface
 models/                 saved model artifacts (.pkl, .json)
 data/raw/               raw datasets (PhishTank, OpenPhish, Tranco)
-reports/                evaluation figures and text reports
+reports/figures/        evaluation figures
+  url_length_dist.png           URL length distribution (notebook 01)
+  feature_correlation.png       feature correlation heatmap (notebook 02)
+  roc_curves.png                ROC curves for all trained models
+  threshold_analysis.png        precision / recall vs. threshold
+  threshold_cost.png            cost-weighted threshold selection
+  feature_importance_best.png   feature importances for the best model
+  shap_bar.png                  global SHAP mean |value| bar chart
+  shap_summary.png              SHAP beeswarm summary plot
+  shap_waterfall_sample.png     SHAP waterfall for a single sample
+  campaign_clusters.png         2-D cluster projection of campaigns
+  campaign_sizes.png            bar chart of campaign sizes
+  silhouette_vs_k.png           silhouette score vs. number of clusters K
 ```
