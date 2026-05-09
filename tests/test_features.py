@@ -64,7 +64,7 @@ class TestExtractFeatures(unittest.TestCase):
         )
 
     def test_issue5_num_slashes_counts_path_not_scheme(self):
-        # https://google.com → path "" or "/"; must not count "//" from scheme (3)
+        # scheme slashes must not be counted
         self.assertEqual(extract_features("https://google.com")["num_slashes"], 1)
 
     def test_issue7_typosquat_hyphenated_brand_prefix(self):

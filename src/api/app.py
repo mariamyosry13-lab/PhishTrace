@@ -167,8 +167,7 @@ def rule_based_boost(feats: dict, raw_score: float) -> tuple[float, list[str]]:
     elif raw_score < 0.65:
         boost = boost * 0.60
 
-    # No red flags: ML score is noise from legitimate structural features
-    # (numeric IDs, topic keywords in path).  Cut confidence by 60%.
+    # no suspicious signals — ML score likely driven by numeric IDs or topic keywords
     is_clean = (
         feats.get("has_https", 0) == 1 and
         feats.get("tld_suspicious", 0) == 0 and

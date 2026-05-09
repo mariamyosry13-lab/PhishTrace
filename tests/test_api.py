@@ -23,28 +23,23 @@ class TestFlaskApp(unittest.TestCase):
         os.close(fd)
         os.environ["PHISHTRACE_DB"] = cls._db_path
         from api.app import app
-        # Patch db module directly so isolation holds regardless of import order.
-        # db.DB_PATH is a module-level constant read once at import; if database.db
-        # was already imported by another test the env-var set above is ignored.
+        # patch directly: env-var is ignored if database.db was already imported
         import database.db as _db
         _db.DB_PATH = cls._db_path
-        _db._model_metrics_cache = None  # reset cached metrics from any prior run
-        _db.init_db()                    # ensure schema exists in this temp file
+        _db._model_metrics_cache = None
+        _db.init_db()
         app.config["TESTING"] = True
         cls.client = app.test_client()
 
     @classmethod
     def tearDownClass(cls):
-        # Release references that may keep SQLite handles alive in tests.
         cls.client = None
         gc.collect()
 
         if not os.path.exists(cls._db_path):
             return
 
-        # On Windows, unlink can fail briefly if SQLite handle teardown lags.
-        # Retry after explicitly opening/closing a no-op connection to ensure
-        # all connections are finalized before file deletion.
+        # on Windows, SQLite handles may lag; retry with a no-op connection to flush
         for _ in range(10):
             try:
                 os.unlink(cls._db_path)

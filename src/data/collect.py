@@ -601,7 +601,7 @@ def load_openphish(path: Path) -> pd.Series:
     return pd.Series([l.strip() for l in lines if l.strip().startswith("http")])
 
 def load_tranco(path: Path) -> pd.Series:
-    """Tranco CSV: rank,domain (no header row) — convert domain → https://domain URL."""
+    """Tranco CSV (rank,domain) — yields https://{domain} URLs."""
     df = pd.read_csv(path, header=None, names=["rank", "domain"])
     return df["domain"].dropna().apply(lambda d: f"https://{d}")
 
@@ -612,10 +612,7 @@ def load_verified_online(path: Path) -> pd.Series:
     return df[col].dropna().astype(str)
 
 def build_dataset() -> pd.DataFrame:
-    """
-    Merge all raw sources into one labelled DataFrame.
-    label = 1 → phishing  |  label = 0 → legitimate
-    """
+    """Merge all raw sources into one labelled DataFrame (label=1 phishing, 0 legit)."""
     print("── Building dataset ──────────────────────────────────────────────────")
     phishing_urls  = []
     legit_urls     = []
@@ -651,7 +648,6 @@ def build_dataset() -> pd.DataFrame:
     legit_urls.append(extra)
     print(f"  [legit]   EXTRA_LEGIT_URLS                → {len(extra):>7,} URLs")
 
-    # Combine
     phish_series = pd.concat(phishing_urls).drop_duplicates().reset_index(drop=True)
     legit_series = pd.concat(legit_urls).drop_duplicates().reset_index(drop=True)
 
@@ -674,13 +670,7 @@ def build_dataset() -> pd.DataFrame:
     return merged
 
 def refresh_from_phishtank(out_path: Path | None = None) -> pd.Series:
-    """
-    Download the latest PhishTank verified phishing URLs.
-    Requires a free PhishTank account key in env var PHISHTANK_API_KEY,
-    or works anonymously (rate-limited).
-
-    Returns a Series of new phishing URLs.
-    """
+    """Download verified online phishing URLs from PhishTank. Set PHISHTANK_API_KEY to avoid rate limits."""
     print("Downloading PhishTank feed...")
     api_key  = os.environ.get("PHISHTANK_API_KEY", "")
     feed_url = (f"{PHISHTANK_URL}?application_key={api_key}"
@@ -718,7 +708,6 @@ def print_stats(df: pd.DataFrame) -> None:
     print(f"  Legitimate : {legit:>8,}  ({legit/total:.1%})")
     print(f"  Avg URL len: {avg_len:>8.1f} chars")
 
-    # Top-level domain distribution (phishing)
     def extract_tld(url):
         try:
             host = urlparse(url).hostname or ""

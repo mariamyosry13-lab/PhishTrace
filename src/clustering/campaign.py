@@ -13,7 +13,6 @@ from sklearn.preprocessing import StandardScaler
 
 matplotlib.use("Agg")
 
-# Paths
 ROOT = Path(__file__).resolve().parent.parent.parent
 FEATURES_CSV = ROOT / "data" / "processed" / "phishtrace_features.csv"
 CAMPAIGNS_CSV = ROOT / "data" / "processed" / "phishtrace_campaigns.csv"
@@ -39,7 +38,6 @@ BATCH_SIZE = 5000
 RANDOM_STATE = 42
 MIN_CLUSTER_SAMPLES = 50
 
-# Cached inference artifacts for assign_campaign()
 _campaign_model = None
 _campaign_scaler = None
 _campaign_loaded = False
@@ -196,7 +194,6 @@ def _choose_cluster_count(X_sample: np.ndarray) -> tuple[int, dict[int, float]]:
         )
         lbl = km.fit_predict(X_sample)
 
-        # Silhouette requires at least 2 labels and fewer labels than samples.
         unique_lbl = np.unique(lbl)
         if len(unique_lbl) < 2 or len(unique_lbl) >= len(X_sample):
             continue
@@ -213,7 +210,6 @@ def _choose_cluster_count(X_sample: np.ndarray) -> tuple[int, dict[int, float]]:
     if sil_scores:
         best_k = max(sil_scores, key=sil_scores.get)
     else:
-        # Fallback for tiny or degenerate samples.
         best_k = min(max_k, 2)
         print("  silhouette unavailable on sample; falling back to k=2")
 
@@ -330,7 +326,6 @@ def main() -> None:
         db_save_campaigns(campaign_list)
         print(f"Saved {len(campaign_list)} campaigns to SQLite DB")
 
-    # Plot 1: Campaign sizes bar chart
     fig, ax = plt.subplots(figsize=(12, 5))
     ax.bar(summary["campaign"], summary["size"], color="#185FA5", alpha=0.8)
     ax.set_xticks(range(len(summary)))
@@ -342,7 +337,6 @@ def main() -> None:
     fig.savefig(FIGURES_DIR / "campaign_sizes.png", dpi=120)
     plt.close(fig)
 
-    # Plot 2: PCA scatter (sample)
     pca = PCA(n_components=2, random_state=RANDOM_STATE)
     X_pca = pca.fit_transform(X_scaled[sample_idx])
     lbl_samp = labels[sample_idx]
@@ -360,7 +354,6 @@ def main() -> None:
     fig.savefig(FIGURES_DIR / "campaign_clusters.png", dpi=120)
     plt.close(fig)
 
-    # Plot 3: Silhouette score vs k (only when we have score data)
     if sil_scores:
         fig, ax = plt.subplots(figsize=(7, 4))
         ax.plot(list(sil_scores.keys()), list(sil_scores.values()), marker="o", color="#185FA5", lw=2)

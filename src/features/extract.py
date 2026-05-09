@@ -100,17 +100,16 @@ def extract_features(url: str) -> dict:
         "num_dots"             : url.count("."),
         "num_hyphens"          : url.count("-"),
         "num_underscores"      : url.count("_"),
-        # Path only (not scheme); bare netloc URLs have "" path — treat as "/" → 1 not 0/3
+        # count path slashes only; default "/" prevents counting scheme slashes
         "num_slashes"          : (path if path else "/").count("/"),
         "num_at"               : url.count("@"),
         "num_question"         : url.count("?"),
         "num_equals"           : url.count("="),
         "num_percent"          : url.count("%"),
-        # digits split by location: domain digits = phishing signal,
-        # path digits = often legitimate numeric IDs
+        # domain digits = phishing signal; path digits = often legitimate IDs
         "num_digits_in_domain" : sum(c.isdigit() for c in hostname),
         "num_digits_in_path"   : sum(c.isdigit() for c in (path + query)),
-        # 1 when the last path segment is a pure integer e.g. /questions/11227809
+        # e.g. /questions/11227809
         "last_path_segment_is_integer": int(
             bool([s for s in path.split("/") if s]) and
             [s for s in path.split("/") if s][-1].isdigit()
@@ -125,8 +124,7 @@ def extract_features(url: str) -> dict:
         "hostname_length"      : len(hostname),
         "path_length"          : len(path),
         "double_slash"         : int("//" in path),
-        # Only search path+query — excludes hostname so support.apple.com,
-        # login.microsoft.com etc. don't trigger false positives.
+        # path+query only — hostname matches like support.apple.com must not count
         "num_suspicious_words" : sum(w in (path + query).lower() for w in SUSPICIOUS_WORDS),
 
         "has_at_in_url"        : int("@" in url),

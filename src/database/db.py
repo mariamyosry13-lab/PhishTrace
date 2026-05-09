@@ -1,8 +1,4 @@
-"""
-PhishTrace — Database Layer (SQLite)
-=====================================
-بيحفظ كل scan في قاعدة بيانات SQLite محلية.
-"""
+"""SQLite persistence layer for scan results and campaigns."""
 
 import sqlite3
 import json
@@ -49,7 +45,6 @@ def get_conn():
 
 
 def init_db():
-    """بنعمل الـ tables لو مش موجودة."""
     with get_conn() as conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS scans (
@@ -83,7 +78,6 @@ def init_db():
 
 def save_scan(url, verdict, score, raw_score,
               rule_alerts=None, shap_reasons=None, features=None, campaign_id=None):
-    """بنحفظ نتيجة الـ scan وبنرجع الـ id."""
     with get_conn() as conn:
         cur = conn.execute(
             """INSERT INTO scans
@@ -105,7 +99,6 @@ def save_scan(url, verdict, score, raw_score,
 
 
 def get_history(limit=50):
-    """بنرجع آخر N scan."""
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT * FROM scans ORDER BY id DESC LIMIT ?", (limit,)
@@ -127,7 +120,6 @@ def get_history(limit=50):
 
 
 def get_scan(scan_id):
-    """بنرجع scan واحد بالـ id بتاعه."""
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM scans WHERE id = ?", (scan_id,)).fetchone()
     if row is None:
@@ -151,14 +143,12 @@ def get_stats():
 
 
 def get_dashboard_stats():
-    """بنرجع الإحصائيات للـ dashboard."""
     with get_conn() as conn:
         total     = conn.execute("SELECT COUNT(*) FROM scans").fetchone()[0]
         dangerous = conn.execute("SELECT COUNT(*) FROM scans WHERE verdict='Dangerous'").fetchone()[0]
         suspicious= conn.execute("SELECT COUNT(*) FROM scans WHERE verdict='Suspicious'").fetchone()[0]
         safe      = conn.execute("SELECT COUNT(*) FROM scans WHERE verdict='Safe'").fetchone()[0]
 
-        # Timeline: آخر 10 scans مع التاريخ
         timeline_rows = conn.execute(
             "SELECT verdict, scanned_at FROM scans ORDER BY id DESC LIMIT 10"
         ).fetchall()
@@ -175,7 +165,6 @@ def get_dashboard_stats():
 
 
 def get_campaigns():
-    """بنرجع الـ campaigns المحفوظة."""
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT * FROM campaigns ORDER BY id DESC"
@@ -195,7 +184,7 @@ def get_campaigns():
 
 
 def save_campaigns(campaign_list):
-    """بنحفظ الـ campaigns الجديدة — بنمسح القديمة الأول عشان الـ clustering بيتعمل من الأول."""
+    """Replace all campaigns — clustering always rebuilds from scratch."""
     now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     with get_conn() as conn:
         conn.execute("DELETE FROM campaigns")

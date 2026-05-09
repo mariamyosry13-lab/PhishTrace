@@ -44,7 +44,6 @@ def load() -> None:
         gpu_name = torch.cuda.get_device_name(0)
         logger.info("BERT: CUDA available — %s", gpu_name)
 
-    # Try GPU first, then CPU
     attempts = [(0, "GPU", torch.float16)] if cuda_ok else []
     attempts.append((-1, "CPU", torch.float32))
 
@@ -97,7 +96,7 @@ def predict_proba(url: str) -> float | None:
         label = result["label"].upper()
         score = float(result["score"])
 
-        # Map model output label → P(phishing)
+        # convert output label to P(phishing)
         is_phishing = "1" in label or "PHISH" in label
         return score if is_phishing else 1.0 - score
 

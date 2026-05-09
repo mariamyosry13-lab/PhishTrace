@@ -133,10 +133,8 @@ async function analyzeURL() {
 function renderResults(d) {
     const score = d.score ?? 0;
     const pct   = Math.round(score * 100);
-    // API returns: verdict (not label)
     const label = d.verdict ?? 'Unknown';
 
-    // Score ring animation
     const arc  = document.getElementById('scoreArc');
     const circ = 2 * Math.PI * 80;
     let color  = '#2ec4b6';
@@ -152,7 +150,6 @@ function renderResults(d) {
     scoreEl.textContent = pct + '%';
     scoreEl.style.color = color;
 
-    // Verdict badge
     const map = {
         Safe:       { text: 'Likely Safe',  icon: 'fa-circle-check',        cls: 'bg-[rgba(46,196,182,0.1)] text-[#8eddd5] border border-[rgba(46,196,182,0.2)]' },
         Suspicious: { text: 'Suspicious',   icon: 'fa-triangle-exclamation', cls: 'bg-[rgba(233,196,106,0.1)] text-[#e9c46a] border border-[rgba(233,196,106,0.2)]' },
@@ -164,7 +161,6 @@ function renderResults(d) {
     document.getElementById('resultLabel').textContent = cfg.text;
     document.getElementById('resultCard').classList.toggle('danger-pulse', label === 'Dangerous');
 
-    // Summary text — adds campaign info if available
     let summary = `The URL scored ${pct}% risk and was classified as "${cfg.text}".`;
     if (d.campaign_id) {
         summary += ` It has been linked to <strong>${escapeHtml(d.campaign_id)}</strong>.`;
@@ -179,7 +175,6 @@ function renderResults(d) {
     document.getElementById('resultTime').innerHTML      = `<i class="fa-solid fa-stopwatch mr-1"></i>Time: ${d._elapsed ?? '—'}ms`;
     document.getElementById('resultThreshold').innerHTML = `<i class="fa-solid fa-sliders mr-1"></i>Threshold: 0.75 / 0.45`;
 
-    // Show scan ID as small badge if available
     if (d.scan_id) {
         document.getElementById('resultModel').innerHTML += `&nbsp;<span class="opacity-40">#${d.scan_id}</span>`;
     }
@@ -188,10 +183,8 @@ function renderResults(d) {
     renderExplanation(d.reasons || [], score, label);
     renderDetails(d);
 
-    // Store scan data globally for report download
     window._lastScan = d;
 
-    // Show download button — inline with the meta pills
     const existingBtn = document.getElementById('downloadReportBtn');
     if (existingBtn) existingBtn.remove();
     const btn = document.createElement('button');
@@ -199,7 +192,6 @@ function renderResults(d) {
     btn.className = 'text-[12px] text-gray-400 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] px-4 py-2 rounded-lg transition-all flex items-center gap-2 flex-shrink-0';
     btn.innerHTML = '<i class="fa-solid fa-file-arrow-down text-[11px]"></i>Download Report';
     btn.onclick = downloadReport;
-    // Insert right after resultThreshold — same flex row
     const threshEl = document.getElementById('resultThreshold');
     if (threshEl) threshEl.insertAdjacentElement('afterend', btn);
 }
@@ -220,7 +212,6 @@ function downloadReport() {
     const _rptModelNames = { random_forest: 'Random Forest', xgboost: 'XGBoost', logistic_regression: 'Logistic Regression' };
     const modelLabel = _rptModelNames[d.model_name] || d.model_name || 'ML Model';
 
-    // ── SHAP rows ─────────────────────────────────────────
     const shapRows = reasons.map(r => {
         const isRisk = r.contribution > 0;
         const barW   = Math.min(Math.abs(r.contribution) * 400, 100);
@@ -239,7 +230,6 @@ function downloadReport() {
         </tr>`;
     }).join('');
 
-    // ── Features grid — all entries as 3-column grid cards ─
     const featEntries = Object.entries(feats).filter(([,v]) => v !== undefined && v !== null);
     const featCards = featEntries.map(([k, v]) => {
         const isBad = (k === 'has_ip' && v) || (k === 'num_suspicious_words' && v >= 1) ||
@@ -407,7 +397,6 @@ function renderExplanation(reasons, score, label) {
         const barColor = isDanger ? '#e63946' : '#2ec4b6';
         const barW     = Math.min((abs / maxAbs) * 100, 100);
 
-        // Use Arabic text from API if available, fallback to feature name
         const explanationText = item.text_en || item.feature;
 
         const row = document.createElement('div');
@@ -469,7 +458,6 @@ function renderDetails(d) {
 // ── Dashboard ────────────────────────────────────────────
 async function loadDashboard() {
     try {
-        // Fetch dashboard stats + recent scans in parallel
         const [dashRes, histRes] = await Promise.all([
             fetch(`${API_BASE}${ENDPOINTS.dashboard}`),
             fetch(`${API_BASE}${ENDPOINTS.history}?limit=8`),
@@ -487,13 +475,11 @@ async function loadDashboard() {
 }
 
 function renderDashboard(d) {
-    // ── Scan counts ──────────────────────────────────────
     document.getElementById('statTotal').textContent  = (d.total_scans ?? 0).toLocaleString();
     document.getElementById('statDanger').textContent = (d.dangerous   ?? 0).toLocaleString();
     document.getElementById('statSusp').textContent   = (d.suspicious  ?? 0).toLocaleString();
     document.getElementById('statSafe').textContent   = (d.safe        ?? 0).toLocaleString();
 
-    // ── Model metrics (from evaluation_results.json via DB seed) ─
     const m   = d.model_metrics || {};
     const fmt = v => (v != null && v > 0) ? (v * 100).toFixed(1) + '%' : '—';
     document.getElementById('mAcc').textContent  = fmt(m.accuracy);
@@ -502,7 +488,6 @@ function renderDashboard(d) {
     document.getElementById('mF1').textContent   = fmt(m.f1);
     document.getElementById('mFPR').textContent  = fmt(m.fpr);
 
-    // ── Recent scans table (replaces Timeline + False Positives) ─
     renderRecentScans(d.recent_scans || []);
 }
 
@@ -599,7 +584,6 @@ function renderCampaignsFromPayload(list, campaigns) {
         const barPct    = Math.round((count / maxCount) * 100);
         const createdAt = camp.created_at ? String(camp.created_at).slice(0, 16).replace('T', ' ') : '—';
 
-        // Show a few static tags from persisted campaign metadata
         const tags = [];
         if (count >= 10) tags.push({ label: 'large-cluster', color: '#e63946' });
         if (count > 0) tags.push({ label: 'active', color: '#2ec4b6' });
@@ -667,7 +651,6 @@ async function loadHistory() {
 
 function renderHistory(d) {
     const wrap  = document.getElementById('historyTableWrap');
-    // API returns: scans[] with fields: scan_id, url, score, verdict, scanned_at, campaign_id
     const scans = d.scans || [];
 
     if (!scans.length) {
