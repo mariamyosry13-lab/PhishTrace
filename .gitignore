@@ -35,3 +35,6 @@ Thumbs.db
 .env
 .env.*
 *.env
+
+.claude/
+.pytest_cache/
