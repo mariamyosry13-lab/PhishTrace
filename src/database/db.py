@@ -211,3 +211,35 @@ def save_campaigns(campaign_list):
             ]
         )
     logger.info("[DB] Saved %s campaigns.", len(campaign_list))
+
+
+def get_phishing_scan_count() -> int:
+    """Count of scans with a phishing verdict."""
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT COUNT(*) FROM scans WHERE verdict IN ('Dangerous', 'Suspicious')"
+        ).fetchone()[0]
+
+
+def get_phishing_scans_with_features() -> list:
+    """Return [{id, features}] for all phishing scans that have stored features."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, features FROM scans WHERE verdict IN ('Dangerous', 'Suspicious')"
+        ).fetchall()
+    result = []
+    for r in rows:
+        feats = _safe_json_loads(r["features"], {})
+        if feats:
+            result.append({"id": r["id"], "features": feats})
+    return result
+
+
+def update_scan_campaigns(assignments: list) -> None:
+    """Batch-update campaign_id for a list of (campaign_id, scan_id) pairs."""
+    with get_conn() as conn:
+        conn.executemany(
+            "UPDATE scans SET campaign_id = ? WHERE id = ?",
+            assignments,
+        )
+    logger.info("[DB] Updated campaign_id for %d scans.", len(assignments))

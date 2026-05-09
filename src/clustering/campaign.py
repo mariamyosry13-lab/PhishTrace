@@ -37,6 +37,7 @@ except ImportError:
 
 BATCH_SIZE = 5000
 RANDOM_STATE = 42
+MIN_CLUSTER_SAMPLES = 50
 
 # Cached inference artifacts for assign_campaign()
 _campaign_model = None
@@ -83,6 +84,91 @@ def assign_campaign(features_dict: dict) -> str | None:
     Xs = sc.transform(X).astype(km.cluster_centers_.dtype)
     cid = int(km.predict(Xs)[0])
     return f"campaign_{cid:03d}"
+
+
+def recluster_if_ready(scan_id: int, min_samples: int = MIN_CLUSTER_SAMPLES):
+    """
+    Called after a phishing scan is saved. Re-clusters all phishing scans from the
+    database using their stored features if we have enough data.
+
+    Returns the campaign_id string assigned to scan_id, or None if clustering
+    was skipped (not enough data or DB unavailable).
+    """
+    global _campaign_model, _campaign_scaler, _campaign_loaded
+
+    try:
+        from database.db import (
+            get_phishing_scan_count,
+            get_phishing_scans_with_features,
+            update_scan_campaigns,
+            save_campaigns as db_save_campaigns,
+        )
+    except ImportError:
+        return None
+
+    if get_phishing_scan_count() < min_samples:
+        return None
+
+    rows = get_phishing_scans_with_features()
+    if len(rows) < min_samples:
+        return None
+
+    X = np.array(
+        [[r["features"].get(c, 0) for c in FEATURE_COLS] for r in rows],
+        dtype=np.float64,
+    )
+
+    sc = StandardScaler()
+    X_scaled = sc.fit_transform(X)
+
+    n = len(X_scaled)
+    max_k = max(2, min(10, n // 5, n - 1))
+    candidates = list(range(2, max_k + 1))
+
+    best_k = 2
+    best_sil = -1.0
+    for k in candidates:
+        km_try = MiniBatchKMeans(
+            n_clusters=k, batch_size=BATCH_SIZE, random_state=RANDOM_STATE, n_init=3, verbose=0
+        )
+        lbl = km_try.fit_predict(X_scaled)
+        unique = np.unique(lbl)
+        if len(unique) < 2:
+            continue
+        sil = silhouette_score(
+            X_scaled, lbl, sample_size=min(500, n), random_state=RANDOM_STATE
+        )
+        if sil > best_sil:
+            best_sil = sil
+            best_k = k
+
+    km = MiniBatchKMeans(
+        n_clusters=best_k, batch_size=BATCH_SIZE, random_state=RANDOM_STATE, n_init=3, verbose=0
+    )
+    labels = km.fit_predict(X_scaled)
+
+    assignments = [(f"campaign_{int(lbl):03d}", r["id"]) for r, lbl in zip(rows, labels)]
+    update_scan_campaigns(assignments)
+
+    from collections import Counter
+    label_counts = Counter(labels.tolist())
+    db_save_campaigns(
+        [{"campaign_name": f"campaign_{k:03d}", "size": v} for k, v in label_counts.items()]
+    )
+
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    joblib.dump(km, MODELS_DIR / "campaign_model.pkl")
+    joblib.dump(sc, MODELS_DIR / "campaign_scaler.pkl")
+
+    _campaign_model = km
+    _campaign_scaler = sc
+    _campaign_loaded = True
+
+    id_to_label = {r["id"]: int(lbl) for r, lbl in zip(rows, labels)}
+    lbl_for_scan = id_to_label.get(scan_id)
+    if lbl_for_scan is not None:
+        return f"campaign_{lbl_for_scan:03d}"
+    return None
 
 
 def _choose_cluster_count(X_sample: np.ndarray) -> tuple[int, dict[int, float]]:

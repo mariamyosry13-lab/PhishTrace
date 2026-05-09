@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from config import FEATURE_COLS, THRESHOLD_DANGEROUS, THRESHOLD_SUSPICIOUS
 from features.unified_extractor import extract_all
 from database.db import init_db, save_scan, get_history, get_dashboard_stats, get_campaigns
-from clustering.campaign import assign_campaign
+from clustering.campaign import recluster_if_ready
 from models import bert_classifier
 
 logger = logging.getLogger(__name__)
@@ -249,7 +249,6 @@ def analyze():
     final_score, rule_alerts = rule_based_boost(feats, raw_score)
     verdict                  = get_verdict(final_score)
     shap_reasons             = get_shap_explanation(X_scaled)
-    campaign_id              = assign_campaign(feats)
 
     scan_id = save_scan(
         url          = url,
@@ -259,8 +258,11 @@ def analyze():
         rule_alerts  = rule_alerts,
         shap_reasons = shap_reasons,
         features     = feats,
-        campaign_id  = campaign_id,
     )
+
+    campaign_id = None
+    if verdict in ("Dangerous", "Suspicious"):
+        campaign_id = recluster_if_ready(scan_id)
 
     return jsonify({
         "url"         : url,
