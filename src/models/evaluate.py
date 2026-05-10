@@ -1,6 +1,3 @@
-"""Produces evaluation artifacts: confusion matrices, ROC curves, threshold analysis,
-feature importance, error analysis CSV, and evaluation_results.json."""
-
 import json
 import os
 import warnings
