@@ -1,13 +1,22 @@
 // ── Config ───────────────────────────────────────────────
-const API_BASE = 'http://127.0.0.1:5000';
+const API_BASE = window.location.origin;
 
 const ENDPOINTS = {
     analyze:   '/analyze',
     dashboard: '/api/dashboard',
     campaigns: '/api/campaigns',
     history:   '/api/history',
-    scan:      '/api/scan',
 };
+
+// ── Utils ────────────────────────────────────────────────
+function escapeHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
 
 // ── Toast ────────────────────────────────────────────────
 function showToast(msg, type = 'info') {
@@ -15,7 +24,7 @@ function showToast(msg, type = 'info') {
     const t = document.createElement('div');
     t.className = `toast ${type}`;
     const icons = { error: 'fa-circle-xmark', success: 'fa-circle-check', info: 'fa-circle-info' };
-    t.innerHTML = `<i class="fa-solid ${icons[type] || icons.info} mr-2"></i><span>${msg}</span>`;
+    t.innerHTML = `<i class="fa-solid ${icons[type] || icons.info} mr-2"></i><span>${escapeHtml(msg)}</span>`;
     wrap.appendChild(t);
     setTimeout(() => t.remove(), 3700);
 }
@@ -124,10 +133,8 @@ async function analyzeURL() {
 function renderResults(d) {
     const score = d.score ?? 0;
     const pct   = Math.round(score * 100);
-    // API returns: verdict (not label)
     const label = d.verdict ?? 'Unknown';
 
-    // Score ring animation
     const arc  = document.getElementById('scoreArc');
     const circ = 2 * Math.PI * 80;
     let color  = '#2ec4b6';
@@ -143,7 +150,6 @@ function renderResults(d) {
     scoreEl.textContent = pct + '%';
     scoreEl.style.color = color;
 
-    // Verdict badge
     const map = {
         Safe:       { text: 'Likely Safe',  icon: 'fa-circle-check',        cls: 'bg-[rgba(46,196,182,0.1)] text-[#8eddd5] border border-[rgba(46,196,182,0.2)]' },
         Suspicious: { text: 'Suspicious',   icon: 'fa-triangle-exclamation', cls: 'bg-[rgba(233,196,106,0.1)] text-[#e9c46a] border border-[rgba(233,196,106,0.2)]' },
@@ -155,20 +161,20 @@ function renderResults(d) {
     document.getElementById('resultLabel').textContent = cfg.text;
     document.getElementById('resultCard').classList.toggle('danger-pulse', label === 'Dangerous');
 
-    // Summary text — adds campaign info if available
     let summary = `The URL scored ${pct}% risk and was classified as "${cfg.text}".`;
     if (d.campaign_id) {
-        summary += ` It has been linked to <strong>${d.campaign_id}</strong>.`;
+        summary += ` It has been linked to <strong>${escapeHtml(d.campaign_id)}</strong>.`;
         document.getElementById('resultSummary').innerHTML = summary;
     } else {
         document.getElementById('resultSummary').textContent = summary;
     }
 
-    document.getElementById('resultModel').innerHTML     = `<i class="fa-solid fa-brain mr-1"></i>Model: Random Forest`;
+    const _modelNames = { random_forest: 'Random Forest', xgboost: 'XGBoost', logistic_regression: 'Logistic Regression' };
+    const _modelDisplay = _modelNames[d.model_name] || d.model_name || 'ML Model';
+    document.getElementById('resultModel').innerHTML     = `<i class="fa-solid fa-brain mr-1"></i>Model: ${escapeHtml(_modelDisplay)}`;
     document.getElementById('resultTime').innerHTML      = `<i class="fa-solid fa-stopwatch mr-1"></i>Time: ${d._elapsed ?? '—'}ms`;
     document.getElementById('resultThreshold').innerHTML = `<i class="fa-solid fa-sliders mr-1"></i>Threshold: 0.75 / 0.45`;
 
-    // Show scan ID as small badge if available
     if (d.scan_id) {
         document.getElementById('resultModel').innerHTML += `&nbsp;<span class="opacity-40">#${d.scan_id}</span>`;
     }
@@ -177,10 +183,8 @@ function renderResults(d) {
     renderExplanation(d.reasons || [], score, label);
     renderDetails(d);
 
-    // Store scan data globally for report download
     window._lastScan = d;
 
-    // Show download button — inline with the meta pills
     const existingBtn = document.getElementById('downloadReportBtn');
     if (existingBtn) existingBtn.remove();
     const btn = document.createElement('button');
@@ -188,7 +192,6 @@ function renderResults(d) {
     btn.className = 'text-[12px] text-gray-400 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] px-4 py-2 rounded-lg transition-all flex items-center gap-2 flex-shrink-0';
     btn.innerHTML = '<i class="fa-solid fa-file-arrow-down text-[11px]"></i>Download Report';
     btn.onclick = downloadReport;
-    // Insert right after resultThreshold — same flex row
     const threshEl = document.getElementById('resultThreshold');
     if (threshEl) threshEl.insertAdjacentElement('afterend', btn);
 }
@@ -206,15 +209,16 @@ function downloadReport() {
     const now        = new Date().toLocaleString();
     const verdictColor = { Dangerous:'#e63946', Suspicious:'#e9c46a', Safe:'#2ec4b6' }[verdict] || '#888';
     const verdictText  = verdict === 'Safe' ? 'Likely Safe' : verdict;
+    const _rptModelNames = { random_forest: 'Random Forest', xgboost: 'XGBoost', logistic_regression: 'Logistic Regression' };
+    const modelLabel = _rptModelNames[d.model_name] || d.model_name || 'ML Model';
 
-    // ── SHAP rows ─────────────────────────────────────────
     const shapRows = reasons.map(r => {
         const isRisk = r.contribution > 0;
         const barW   = Math.min(Math.abs(r.contribution) * 400, 100);
         const barCol = isRisk ? '#e63946' : '#2ec4b6';
         return `<tr>
-            <td style="padding:7px 10px;border-bottom:1px solid #f0f0f0;font-size:12px;font-family:monospace;font-weight:500">${r.feature}</td>
-            <td style="padding:7px 10px;border-bottom:1px solid #f0f0f0;font-size:11px;color:#666">${r.text_en || ''}</td>
+            <td style="padding:7px 10px;border-bottom:1px solid #f0f0f0;font-size:12px;font-family:monospace;font-weight:500">${escapeHtml(r.feature)}</td>
+            <td style="padding:7px 10px;border-bottom:1px solid #f0f0f0;font-size:11px;color:#666">${escapeHtml(r.text_en || '')}</td>
             <td style="padding:7px 10px;border-bottom:1px solid #f0f0f0;width:140px">
                 <div style="background:#f0f0f0;border-radius:4px;height:8px">
                     <div style="background:${barCol};height:100%;border-radius:4px;width:${barW}%"></div>
@@ -226,10 +230,9 @@ function downloadReport() {
         </tr>`;
     }).join('');
 
-    // ── Features grid — all entries as 3-column grid cards ─
     const featEntries = Object.entries(feats).filter(([,v]) => v !== undefined && v !== null);
     const featCards = featEntries.map(([k, v]) => {
-        const isBad = (k === 'has_ip' && v) || (k === 'has_suspicious_word' && v) ||
+        const isBad = (k === 'has_ip' && v) || (k === 'num_suspicious_words' && v >= 1) ||
                       (k === 'has_at_in_url' && v) || (k === 'double_slash' && v) ||
                       (k === 'num_subdomains' && v >= 3) || (k === 'num_hyphens' && v >= 2) ||
                       (k === 'url_length' && v > 75) || (k === 'num_suspicious_words' && v >= 2);
@@ -238,11 +241,14 @@ function downloadReport() {
         return `<div style="padding:8px 12px;border:1px solid #f0f0f0;border-radius:8px;display:flex;align-items:center;justify-content:space-between;gap:8px">
             <div style="display:flex;align-items:center;gap:6px">
                 <div style="width:7px;height:7px;border-radius:50%;background:${dot};flex-shrink:0"></div>
-                <span style="font-size:11px;color:#666">${k}</span>
+                <span style="font-size:11px;color:#666">${escapeHtml(k)}</span>
             </div>
-            <span style="font-size:12px;font-weight:600;font-family:monospace;color:#1a1a1a">${v}</span>
+            <span style="font-size:12px;font-weight:600;font-family:monospace;color:#1a1a1a">${escapeHtml(v)}</span>
         </div>`;
     }).join('');
+
+    const safeUrl        = escapeHtml(d.url || '');
+    const safeCampaignId = escapeHtml(d.campaign_id || '');
 
     const html = `<!DOCTYPE html>
 <html>
@@ -288,7 +294,7 @@ function downloadReport() {
   <div class="report-meta">
     <div>Generated: ${now}</div>
     ${d.scan_id ? `<div>Scan ID: #${d.scan_id}</div>` : ''}
-    <div>Model: Random Forest &nbsp;·&nbsp; Threshold: 0.75 / 0.45</div>
+    <div>Model: ${escapeHtml(modelLabel)} &nbsp;·&nbsp; Threshold: 0.75 / 0.45</div>
   </div>
 </div>
 
@@ -296,12 +302,12 @@ function downloadReport() {
   <div class="score-ring"><div class="score-num">${score}%</div></div>
   <div style="flex:1">
     <div class="verdict-name">${verdictText}</div>
-    <div class="verdict-url">${d.url}</div>
+    <div class="verdict-url">${safeUrl}</div>
     <div class="pills">
       <span class="pill">Risk Score: ${score}%</span>
       <span class="pill">SHAP Explainability</span>
-      <span class="pill">Random Forest</span>
-      ${d.campaign_id ? `<span class="pill pill-warn">⚑ ${d.campaign_id}</span>` : ''}
+      <span class="pill">${escapeHtml(modelLabel)}</span>
+      ${safeCampaignId ? `<span class="pill pill-warn">⚑ ${safeCampaignId}</span>` : ''}
     </div>
   </div>
 </div>
@@ -321,7 +327,7 @@ function downloadReport() {
 
 <div class="footer">
   PhishTrace &nbsp;·&nbsp; Graduation Project &nbsp;·&nbsp; Faculty of Engineering<br>
-  Random Forest &nbsp;·&nbsp; F1 = 96.86% &nbsp;·&nbsp; AUC = 98.17% &nbsp;·&nbsp; Test Set: 15,877 samples
+  ${escapeHtml(modelLabel)} &nbsp;·&nbsp; PhishTrace Analysis System
 </div>
 
 </body></html>`;
@@ -347,11 +353,11 @@ function renderFeatures(f) {
         { k: 'has_ip',               label: 'IP Address',        icon: 'fa-server',               fmt: v => v ? 'Yes':'No', bad: v => !!v },
         { k: 'num_subdomains',       label: 'Subdomains',        icon: 'fa-layer-group',          fmt: v => v,              bad: v => v >= 3 },
         { k: 'has_https',            label: 'HTTPS',             icon: 'fa-lock',                 fmt: v => v ? 'Yes':'No', bad: v => !v },
-        { k: 'has_suspicious_word',  label: 'Suspicious Word',   icon: 'fa-key',                  fmt: v => v ? 'Yes':'No', bad: v => !!v },
         { k: 'num_hyphens',          label: 'Hyphens',           icon: 'fa-minus',                fmt: v => v,              bad: v => v >= 2 },
         { k: 'num_dots',             label: 'Dots',              icon: 'fa-ellipsis',             fmt: v => v,              bad: v => v >= 4 },
         { k: 'path_length',          label: 'Path Length',       icon: 'fa-folder-open',          fmt: v => v + ' chars',   bad: v => v > 50 },
-        { k: 'num_digits',           label: 'Digits in URL',     icon: 'fa-hashtag',              fmt: v => v,              bad: v => v > 10 },
+        { k: 'num_digits_in_domain', label: 'Digits (domain)',    icon: 'fa-hashtag',              fmt: v => v,              bad: v => v > 5 },
+        { k: 'num_digits_in_path',   label: 'Digits (path)',      icon: 'fa-hashtag',              fmt: v => v,              bad: v => v > 10 },
         { k: 'has_at_in_url',        label: '@ in URL',          icon: 'fa-at',                   fmt: v => v ? 'Yes':'No', bad: v => !!v },
         { k: 'double_slash',         label: 'Double Slash',      icon: 'fa-slash',                fmt: v => v ? 'Yes':'No', bad: v => !!v },
         { k: 'num_suspicious_words', label: 'Suspicious Count',  icon: 'fa-triangle-exclamation', fmt: v => v,              bad: v => v >= 2 },
@@ -391,15 +397,14 @@ function renderExplanation(reasons, score, label) {
         const barColor = isDanger ? '#e63946' : '#2ec4b6';
         const barW     = Math.min((abs / maxAbs) * 100, 100);
 
-        // Use Arabic text from API if available, fallback to feature name
         const explanationText = item.text_en || item.feature;
 
         const row = document.createElement('div');
         row.className = 'flex items-center gap-4';
         row.innerHTML = `
             <div class="w-52 sm:w-64 text-left flex-shrink-0">
-                <div class="text-sm font-semibold font-mono">${item.feature}</div>
-                <div class="text-[11px] text-gray-500 leading-tight mt-0.5">${explanationText}</div>
+                <div class="text-sm font-semibold font-mono">${escapeHtml(item.feature)}</div>
+                <div class="text-[11px] text-gray-500 leading-tight mt-0.5">${escapeHtml(explanationText)}</div>
             </div>
             <div class="flex-1">
                 <div class="contrib-bar">
@@ -432,7 +437,8 @@ function renderDetails(d) {
         { label: 'Has IP Host',    icon: 'fa-server',       val: feats.has_ip ? 'Yes' : 'No' },
         { label: 'Subdomains',     icon: 'fa-layer-group',  val: feats.num_subdomains },
         { label: 'Path Length',    icon: 'fa-folder',       val: feats.path_length + ' characters' },
-        { label: 'Digit Count',    icon: 'fa-hashtag',      val: feats.num_digits },
+        { label: 'Digits (domain)',icon: 'fa-hashtag',      val: feats.num_digits_in_domain },
+        { label: 'Digits (path)', icon: 'fa-hashtag',      val: feats.num_digits_in_path },
         { label: 'Hyphen Count',   icon: 'fa-minus',        val: feats.num_hyphens },
     ];
     items.forEach(item => {
@@ -444,7 +450,7 @@ function renderDetails(d) {
                 <i class="fa-solid ${item.icon} text-[11px] text-gray-500"></i>
                 <span class="text-[11px] text-gray-500 font-semibold uppercase tracking-wider">${item.label}</span>
             </div>
-            <div class="text-sm font-mono break-all text-gray-300">${item.val}</div>`;
+            <div class="text-sm font-mono break-all text-gray-300">${escapeHtml(item.val)}</div>`;
         grid.appendChild(div);
     });
 }
@@ -452,7 +458,6 @@ function renderDetails(d) {
 // ── Dashboard ────────────────────────────────────────────
 async function loadDashboard() {
     try {
-        // Fetch dashboard stats + recent scans in parallel
         const [dashRes, histRes] = await Promise.all([
             fetch(`${API_BASE}${ENDPOINTS.dashboard}`),
             fetch(`${API_BASE}${ENDPOINTS.history}?limit=8`),
@@ -470,13 +475,11 @@ async function loadDashboard() {
 }
 
 function renderDashboard(d) {
-    // ── Scan counts ──────────────────────────────────────
     document.getElementById('statTotal').textContent  = (d.total_scans ?? 0).toLocaleString();
     document.getElementById('statDanger').textContent = (d.dangerous   ?? 0).toLocaleString();
     document.getElementById('statSusp').textContent   = (d.suspicious  ?? 0).toLocaleString();
     document.getElementById('statSafe').textContent   = (d.safe        ?? 0).toLocaleString();
 
-    // ── Model metrics (from evaluation_results.json via DB seed) ─
     const m   = d.model_metrics || {};
     const fmt = v => (v != null && v > 0) ? (v * 100).toFixed(1) + '%' : '—';
     document.getElementById('mAcc').textContent  = fmt(m.accuracy);
@@ -485,7 +488,6 @@ function renderDashboard(d) {
     document.getElementById('mF1').textContent   = fmt(m.f1);
     document.getElementById('mFPR').textContent  = fmt(m.fpr);
 
-    // ── Recent scans table (replaces Timeline + False Positives) ─
     renderRecentScans(d.recent_scans || []);
 }
 
@@ -513,10 +515,10 @@ function renderRecentScans(scans) {
                 <thead><tr><th>URL</th><th>Result</th><th>Score</th><th>Time</th></tr></thead>
                 <tbody>
                     ${scans.slice(0, 8).map(s => `<tr>
-                        <td class="font-mono text-xs text-gray-400 max-w-xs truncate" title="${s.url}">${s.url}</td>
-                        <td><span class="text-xs px-2.5 py-1 rounded-lg font-semibold ${styles[s.verdict] || ''}">${s.verdict ?? '—'}</span></td>
+                        <td class="font-mono text-xs text-gray-400 max-w-xs truncate" title="${escapeHtml(s.url)}">${escapeHtml(s.url)}</td>
+                        <td><span class="text-xs px-2.5 py-1 rounded-lg font-semibold ${styles[s.verdict] || ''}">${escapeHtml(s.verdict ?? '—')}</span></td>
                         <td class="font-mono text-sm">${s.score != null ? Math.round(s.score * 100) + '%' : '—'}</td>
-                        <td class="text-xs text-gray-500">${s.timestamp ? s.timestamp.slice(0, 16).replace('T', ' ') : '—'}</td>
+                        <td class="text-xs text-gray-500">${s.scanned_at ? s.scanned_at.slice(0, 16).replace('T', ' ') : '—'}</td>
                     </tr>`).join('')}
                 </tbody>
             </table>
@@ -539,31 +541,12 @@ async function loadCampaigns() {
 
 function renderCampaigns(d) {
     const list = document.getElementById('campaignsList');
-
-    // Campaigns page shows ONLY campaigns found from the user's own scans
-    // (URLs linked to a campaign_id during analysis)
-    // We fetch from /api/history and group by campaign_id
-    fetch(`${API_BASE}${ENDPOINTS.history}?limit=200`)
-        .then(r => r.json())
-        .then(histData => renderCampaignsFromHistory(list, histData.scans || []))
-        .catch(() => {
-            list.innerHTML = `<div class="empty-state">
-                <i class="fa-solid fa-triangle-exclamation"></i>
-                <p class="text-sm">Failed to load scan data</p>
-            </div>`;
-        });
+    const campaigns = d.campaigns || [];
+    renderCampaignsFromPayload(list, campaigns);
 }
 
-function renderCampaignsFromHistory(list, scans) {
-    // Group scans by campaign_id (only Dangerous/Suspicious with a campaign)
-    const grouped = {};
-    scans.forEach(s => {
-        if (!s.campaign_id) return;
-        if (!grouped[s.campaign_id]) grouped[s.campaign_id] = [];
-        grouped[s.campaign_id].push(s);
-    });
-
-    const campaignNames = Object.keys(grouped);
+function renderCampaignsFromPayload(list, campaigns) {
+    const campaignNames = campaigns.map(c => c.name).filter(Boolean);
 
     if (!campaignNames.length) {
         list.innerHTML = `
@@ -578,14 +561,13 @@ function renderCampaignsFromHistory(list, scans) {
         return;
     }
 
-    // Sort by count descending
-    campaignNames.sort((a, b) => grouped[b].length - grouped[a].length);
-    const total = campaignNames.reduce((s, k) => s + grouped[k].length, 0);
+    campaigns.sort((a, b) => ((b.scan_ids || []).length - (a.scan_ids || []).length));
+    const total = campaigns.reduce((s, c) => s + ((c.scan_ids || []).length), 0);
 
     list.innerHTML = `
         <div class="flex items-center gap-6 mb-6 px-1">
             <div class="text-sm text-gray-400">
-                <span class="text-white font-bold text-lg">${campaignNames.length}</span> campaigns detected in your scans
+                <span class="text-white font-bold text-lg">${campaigns.length}</span> campaigns detected in your scans
             </div>
             <div class="text-sm text-gray-400">
                 <span class="text-white font-bold text-lg">${total}</span> phishing URLs linked
@@ -595,21 +577,16 @@ function renderCampaignsFromHistory(list, scans) {
 
     const container = document.getElementById('campCards');
 
-    campaignNames.forEach(campName => {
-        const campScans = grouped[campName];
-        const count     = campScans.length;
-        const maxCount  = grouped[campaignNames[0]].length || 1;
+    campaigns.forEach(camp => {
+        const campName = camp.name || 'Unknown';
+        const count = (camp.scan_ids || []).length;
+        const maxCount = (campaigns[0].scan_ids || []).length || 1;
         const barPct    = Math.round((count / maxCount) * 100);
-        const lastSeen  = campScans[0]?.timestamp?.slice(0, 16).replace('T', ' ') || '—';
+        const createdAt = camp.created_at ? String(camp.created_at).slice(0, 16).replace('T', ' ') : '—';
 
-        // Detect common features across URLs in this campaign
         const tags = [];
-        const allHasIp   = campScans.every(s => s.features?.has_ip);
-        const allSuspWord = campScans.some(s => s.features?.has_suspicious_word);
-        const allSuspTld  = campScans.some(s => s.features?.tld_suspicious);
-        if (allHasIp)    tags.push({ label: 'IP-based',        color: '#e63946' });
-        if (allSuspWord) tags.push({ label: 'suspicious-words', color: '#e9c46a' });
-        if (allSuspTld)  tags.push({ label: 'suspicious-TLD',   color: '#e9c46a' });
+        if (count >= 10) tags.push({ label: 'large-cluster', color: '#e63946' });
+        if (count > 0) tags.push({ label: 'active', color: '#2ec4b6' });
 
         const tagsHtml = tags.map(t =>
             `<span class="text-[10px] px-2 py-0.5 rounded-md border mr-1.5 mt-1" style="color:${t.color};border-color:${t.color}44">${t.label}</span>`
@@ -624,8 +601,8 @@ function renderCampaignsFromHistory(list, scans) {
                         <i class="fa-solid fa-bullseye text-[#e9c46a] text-sm"></i>
                     </div>
                     <div>
-                        <div class="font-bold text-sm font-mono">${campName}</div>
-                        <div class="text-[11px] text-gray-500">${count} URL${count > 1 ? 's' : ''} · Last seen ${lastSeen}</div>
+                        <div class="font-bold text-sm font-mono">${escapeHtml(campName)}</div>
+                        <div class="text-[11px] text-gray-500">${count} URL${count > 1 ? 's' : ''} · Created ${escapeHtml(createdAt)}</div>
                     </div>
                 </div>
                 <div class="flex items-center gap-3">
@@ -638,13 +615,12 @@ function renderCampaignsFromHistory(list, scans) {
                 <div class="h-full rounded-full bg-[rgba(233,196,106,0.45)] transition-all duration-700" style="width:${barPct}%"></div>
             </div>
             <div class="camp-detail hidden mt-4 pt-4 border-t border-white/[0.04]">
-                <div class="text-[11px] text-gray-500 uppercase tracking-wider font-semibold mb-3">Scanned URLs in this campaign</div>
-                ${campScans.slice(0, 5).map(s => `
+                <div class="text-[11px] text-gray-500 uppercase tracking-wider font-semibold mb-3">Scan IDs in this campaign</div>
+                ${(camp.scan_ids || []).slice(0, 5).map(scanId => `
                     <div class="flex items-center justify-between py-2 border-b border-white/[0.03] gap-3">
-                        <span class="font-mono text-xs text-gray-400 truncate flex-1" title="${s.url}">${s.url}</span>
-                        <span class="text-xs font-mono font-bold ${s.verdict === 'Dangerous' ? 'text-[#f0a0a8]' : 'text-[#e9c46a]'} flex-shrink-0">${Math.round((s.score||0)*100)}%</span>
+                        <span class="font-mono text-xs text-gray-400 truncate flex-1">Scan #${escapeHtml(scanId)}</span>
                     </div>`).join('')}
-                ${campScans.length > 5 ? `<p class="text-[11px] text-gray-600 mt-2">+${campScans.length - 5} more URLs</p>` : ''}
+                ${(camp.scan_ids || []).length > 5 ? `<p class="text-[11px] text-gray-600 mt-2">+${(camp.scan_ids || []).length - 5} more scans</p>` : ''}
             </div>`;
         container.appendChild(card);
     });
@@ -675,7 +651,6 @@ async function loadHistory() {
 
 function renderHistory(d) {
     const wrap  = document.getElementById('historyTableWrap');
-    // API returns: scans[] with fields: id, url, score, verdict, timestamp, campaign_id
     const scans = d.scans || [];
 
     if (!scans.length) {
@@ -711,20 +686,20 @@ function renderHistory(d) {
                 <tbody>
                     ${scans.map(s => `
                     <tr>
-                        <td class="text-[11px] text-gray-600 font-mono">${s.id ?? '—'}</td>
-                        <td class="font-mono text-xs text-gray-400 max-w-xs truncate" title="${s.url}">${s.url}</td>
+                        <td class="text-[11px] text-gray-600 font-mono">${s.scan_id ?? s.id ?? '—'}</td>
+                        <td class="font-mono text-xs text-gray-400 max-w-xs truncate" title="${escapeHtml(s.url)}">${escapeHtml(s.url)}</td>
                         <td>
                             <span class="text-xs px-2.5 py-1 rounded-lg font-semibold ${styles[s.verdict] || ''}">
-                                ${s.verdict ?? '—'}
+                                ${escapeHtml(s.verdict ?? '—')}
                             </span>
                         </td>
                         <td class="font-mono text-sm">${s.score != null ? Math.round(s.score * 100) + '%' : '—'}</td>
-                        <td class="text-[11px] font-mono text-gray-500">${s.campaign_id || '—'}</td>
-                        <td class="text-xs text-gray-500">${s.timestamp ? s.timestamp.slice(0, 16).replace('T', ' ') : '—'}</td>
+                        <td class="text-[11px] font-mono text-gray-500">${escapeHtml(s.campaign_id || '—')}</td>
+                        <td class="text-xs text-gray-500">${s.scanned_at ? s.scanned_at.slice(0, 16).replace('T', ' ') : '—'}</td>
                         <td>
                             <button
                                 class="text-gray-500 hover:text-white transition-colors px-2 py-1 rounded hover:bg-white/5"
-                                onclick="reAnalyze('${s.url.replace(/'/g, "\\'")}')"
+                                data-reanalyze="${escapeHtml(s.url)}"
                                 title="Re-analyze">
                                 <i class="fa-solid fa-arrows-rotate text-xs"></i>
                             </button>
@@ -736,6 +711,10 @@ function renderHistory(d) {
         <div class="px-4 py-3 border-t border-white/[0.04] text-[11px] text-gray-600">
             Showing ${scans.length} most recent scans
         </div>`;
+
+    wrap.querySelectorAll('[data-reanalyze]').forEach(btn => {
+        btn.addEventListener('click', () => reAnalyze(btn.dataset.reanalyze));
+    });
 }
 
 function reAnalyze(url) {

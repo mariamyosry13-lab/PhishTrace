@@ -1,94 +1,52 @@
-"""
-PhishTrace — Unified Feature Extractor
-========================================
-Wraps extract.py and adds 4 extra features that improve model performance:
-
-  url_entropy       — Shannon entropy of URL characters
-                      (phishing URLs tend to have higher entropy due to
-                       random-looking strings and hex encoding)
-
-  tld_suspicious    — 1 if TLD is associated with cheap/abused registrations
-                      (.xyz, .top, .click, .tk, .ml, .ga, .cf, .gq, .pw, ...)
-
-  brand_impersonation — 1 if a known brand name appears in a subdomain
-                        rather than the root domain
-                        (e.g. paypal.evil.com → PayPal in subdomain = suspicious)
-
-  path_depth        — number of '/' segments in the URL path
-                      (phishing pages often bury the form deep in the path)
-
-Usage
------
-from features.unified_extractor import extract_all, ALL_FEATURE_COLS
-
-feats = extract_all("http://bankofegypt-login.example.com/confirm/form")
-# → dict with 23 features (19 base + 4 extra)
-
-Notes
------
-- The 4 extra features are NOT used by the trained model (scaler + best_model.pkl)
-  which expects the original 19-column FEATURE_COLS.
-- To use them you must retrain after adding them to the feature matrix.
-- They ARE included in the /analyze API response under "features" for display only.
-- unified_extractor.extract_all() is the single entry-point for the API.
-"""
-
 import re
 import math
+import tldextract
 from urllib.parse import urlparse
 from pathlib import Path
 import sys
 
-# ── Import base extractor ─────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "src"))
-from features.extract import extract_features, SUSPICIOUS_WORDS   # noqa: E402
+from features.extract import extract_features, SUSPICIOUS_WORDS, BRAND_NAMES  # noqa: E402
 
-# ── Extra feature config ──────────────────────────────────────────────────────
-SUSPICIOUS_TLDS = {
-    "xyz", "top", "click", "tk", "ml", "ga", "cf", "gq",
-    "pw", "cc", "ws", "biz", "info", "su", "icu", "rest",
-    "online", "site", "store", "fun", "live", "space",
-}
+KNOWN_BRANDS = BRAND_NAMES
 
-KNOWN_BRANDS = {
-    "google", "facebook", "paypal", "amazon", "apple", "microsoft",
-    "bankofegypt", "cib", "nbe", "hsbc", "vodafone", "etisalat",
-    "instagram", "twitter", "whatsapp", "netflix", "ebay", "dhl",
-    "fedex", "ups", "usps", "linkedin", "dropbox", "icloud",
-}
-
-# 19 original + 4 extra
+# 19 ML features (must match FEATURE_COLS in app.py / train.py)
 BASE_FEATURE_COLS = [
     "url_length","num_dots","num_hyphens","num_underscores","num_slashes",
-    "num_at","num_question","num_equals","num_percent","num_digits",
-    "has_ip","has_https","has_suspicious_word","num_subdomains",
-    "hostname_length","path_length","double_slash","has_at_in_url",
+    "num_at","num_question","num_equals","num_percent",
+    "num_digits_in_domain","num_digits_in_path","last_path_segment_is_integer",
+    "has_ip","has_https","num_subdomains",
+    "hostname_length","path_length","double_slash",
     "num_suspicious_words",
+]
+
+# Rule-boost / display fields from extract_features() (used by app.rule_based_boost)
+RULE_BOOST_FEATURE_COLS = [
+    "has_at_in_url",
+    "min_levenshtein",
+    "is_typosquat",
+    "hostname_entropy",
+    "digit_ratio_hostname",
+    "query_length",
+    "num_params",
+    "has_port",
+    "tld_suspicious",
+    "brand_in_subdomain",
 ]
 
 EXTRA_FEATURE_COLS = [
     "url_entropy",
-    "tld_suspicious",
     "brand_impersonation",
     "path_depth",
 ]
 
-ALL_FEATURE_COLS = BASE_FEATURE_COLS + EXTRA_FEATURE_COLS
+ALL_FEATURE_COLS = (
+    BASE_FEATURE_COLS + RULE_BOOST_FEATURE_COLS + EXTRA_FEATURE_COLS
+)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  Extra feature functions
-# ═══════════════════════════════════════════════════════════════════════════════
 def calc_entropy(url: str) -> float:
-    """
-    Shannon entropy of characters in the URL.
-    Higher entropy → more random-looking → more likely phishing.
-
-    Max theoretical entropy for printable ASCII ≈ 6.57 bits.
-    Typical legitimate URL: 3–4 bits.
-    Typical phishing URL:   4–5.5 bits.
-    """
     if not url:
         return 0.0
     freq = {}
@@ -98,53 +56,32 @@ def calc_entropy(url: str) -> float:
     return round(-sum((cnt/n) * math.log2(cnt/n) for cnt in freq.values()), 4)
 
 
-def check_tld_suspicious(url: str) -> int:
-    """Return 1 if the TLD is in the suspicious list."""
-    try:
-        host  = urlparse(url).hostname or ""
-        parts = host.rstrip(".").split(".")
-        tld   = parts[-1].lower() if parts else ""
-        return int(tld in SUSPICIOUS_TLDS)
-    except Exception:
-        return 0
-
-
 def check_brand_impersonation(url: str) -> int:
-    """
-    Return 1 if a known brand appears in a subdomain but NOT in the
-    registered domain (second-level domain).
-
-    Example:
-      paypal.evil-login.com  → brand 'paypal' in subdomain → 1
-      paypal.com             → brand 'paypal' IS the domain → 0
-      evil-paypal-login.net  → brand in full URL but as part of hostname → 1
-    """
+    """1 if a known brand appears in the hostname but not as the registrable domain."""
     try:
-        host   = urlparse(url).hostname or ""
-        parts  = host.rstrip(".").split(".")
-        if len(parts) < 2:
+        host = urlparse(url).hostname or ""
+        if not host:
             return 0
-        # Registered domain = last two parts (e.g. evil.com)
-        reg_domain = ".".join(parts[-2:]).lower()
+        if re.match(r"^(?:\d{1,3}\.){3}\d{1,3}$", host):
+            return 0
+        ext = tldextract.extract(host.rstrip("."))
+        if not ext.suffix:
+            return 0
+        registered = ext.domain.lower()
         full_lower = host.lower()
 
-        for brand in KNOWN_BRANDS:
-            if brand in full_lower:
-                # Brand in URL — check if it's actually the legitimate domain
-                if full_lower == f"{brand}.com" or full_lower.endswith(f".{brand}.com"):
-                    return 0   # legitimate domain
-                return 1       # brand in subdomain/hostname = impersonation
+        for brand in BRAND_NAMES:
+            if brand not in full_lower:
+                continue
+            if registered == brand:
+                return 0
+            return 1
         return 0
     except Exception:
         return 0
 
 
 def calc_path_depth(url: str) -> int:
-    """
-    Number of non-empty path segments.
-    /confirm/form/login → depth 3.
-    Phishing pages often bury the form deep (depth > 4).
-    """
     try:
         path   = urlparse(url).path or ""
         segs   = [s for s in path.split("/") if s]
@@ -153,28 +90,10 @@ def calc_path_depth(url: str) -> int:
         return 0
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  Main public function
-# ═══════════════════════════════════════════════════════════════════════════════
 def extract_all(url: str) -> dict:
-    """
-    Extract all 23 features for a given URL.
-
-    The 19 base features are used by the trained model.
-    The 4 extra features are displayed in the API response for user insight.
-
-    Parameters
-    ----------
-    url : str
-
-    Returns
-    -------
-    dict with keys from ALL_FEATURE_COLS (23 total)
-    """
     base   = extract_features(url)
     extras = {
         "url_entropy"        : calc_entropy(url),
-        "tld_suspicious"     : check_tld_suspicious(url),
         "brand_impersonation": check_brand_impersonation(url),
         "path_depth"         : calc_path_depth(url),
     }
@@ -182,36 +101,41 @@ def extract_all(url: str) -> dict:
 
 
 def get_feature_report(url: str) -> list[dict]:
-    """
-    Return a structured report of all features with values and human context.
-    Useful for display in the frontend or for debugging.
-    """
     feats = extract_all(url)
 
     explanations = {
-        "url_length"          : "Length of the full URL",
-        "num_dots"            : "Number of dots (subdomains / path separators)",
-        "num_hyphens"         : "Number of hyphens in the URL",
-        "num_underscores"     : "Number of underscores",
-        "num_slashes"         : "Number of forward slashes",
-        "num_at"              : "Presence of @ symbol",
-        "num_question"        : "Number of query string markers (?)",
-        "num_equals"          : "Number of parameter assignments (=)",
-        "num_percent"         : "URL-encoded characters (%xx)",
-        "num_digits"          : "Number of digits in the URL",
-        "has_ip"              : "URL uses raw IP instead of domain name",
-        "has_https"           : "URL uses HTTPS",
-        "has_suspicious_word" : f"Contains suspicious word (e.g. {', '.join(SUSPICIOUS_WORDS[:3])}...)",
-        "num_subdomains"      : "Number of subdomain levels",
-        "hostname_length"     : "Length of the hostname",
-        "path_length"         : "Length of the URL path",
-        "double_slash"        : "Double slash in path (// — possible open redirect)",
-        "has_at_in_url"       : "@ symbol present in URL",
-        "num_suspicious_words": "Count of suspicious words in URL",
-        "url_entropy"         : "Shannon entropy (randomness) of URL characters",
-        "tld_suspicious"      : "Top-level domain is in the high-risk list",
-        "brand_impersonation" : "Known brand name appears in subdomain (not root domain)",
-        "path_depth"          : "Depth of the URL path (number of segments)",
+        "url_length"                 : "Length of the full URL",
+        "num_dots"                   : "Number of dots (subdomains / path separators)",
+        "num_hyphens"                : "Number of hyphens in the URL",
+        "num_underscores"            : "Number of underscores",
+        "num_slashes"                : "Number of forward slashes",
+        "num_at"                     : "Presence of @ symbol",
+        "num_question"               : "Number of query string markers (?)",
+        "num_equals"                 : "Number of parameter assignments (=)",
+        "num_percent"                : "URL-encoded characters (%xx)",
+        "num_digits_in_domain"       : "Number of digits in the hostname (phishing signal)",
+        "num_digits_in_path"         : "Number of digits in the path/query (often legitimate IDs)",
+        "last_path_segment_is_integer": "Last path segment is a pure integer (e.g. /questions/11227809)",
+        "has_ip"                     : "URL uses raw IP instead of domain name",
+        "has_https"                  : "URL uses HTTPS",
+        "num_subdomains"             : "Number of subdomain levels",
+        "hostname_length"            : "Length of the hostname",
+        "path_length"                : "Length of the URL path",
+        "double_slash"               : "Double slash in path (// — possible open redirect)",
+        "has_at_in_url"              : "@ symbol present in URL",
+        "num_suspicious_words"       : f"Count of suspicious words (e.g. {', '.join(SUSPICIOUS_WORDS[:3])}...)",
+        "min_levenshtein"            : "Minimum Levenshtein distance from hostname to a known brand (typosquat signal)",
+        "is_typosquat"               : "Hostname closely resembles a known brand name",
+        "hostname_entropy"           : "Shannon entropy of the hostname (randomness)",
+        "digit_ratio_hostname"       : "Fraction of hostname characters that are digits",
+        "query_length"               : "Length of the query string",
+        "num_params"                 : "Number of query parameters",
+        "has_port"                   : "URL specifies a non-default port",
+        "brand_in_subdomain"         : "Known brand string appears in subdomain labels (extract.py heuristic)",
+        "url_entropy"                : "Shannon entropy (randomness) of URL characters",
+        "tld_suspicious"             : "Top-level domain is in the high-risk list",
+        "brand_impersonation"        : "Known brand name appears in subdomain (not root domain)",
+        "path_depth"                 : "Depth of the URL path (number of segments)",
     }
 
     report = []
@@ -226,9 +150,6 @@ def get_feature_report(url: str) -> list[dict]:
     return report
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  CLI demo
-# ═══════════════════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
     test_urls = [
         "https://bankofegypt-login.example.com/confirm/form",
@@ -245,6 +166,6 @@ if __name__ == "__main__":
         for item in report:
             flag = " [EXTRA]" if item["is_extra"] else ""
             val  = item["value"]
-            mark = " ⚠" if (isinstance(val, int) and val == 1
+            mark = " [!]" if (isinstance(val, int) and val == 1
                              and item["feature"] not in ("has_https",)) else ""
             print(f"  {item['feature']:<25} = {val}{mark}{flag}")

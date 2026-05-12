@@ -92,7 +92,8 @@
 
                 <div class="max-w-3xl mx-auto mb-7">
                     <div class="relative">
-                        <input type="text" id="urlInput" class="url-input" placeholder="Paste a URL or email address..." autocomplete="off" spellcheck="false" onkeydown="if(event.key==='Enter')analyzeURL()">
+                        <label for="urlInput" class="sr-only">URL or email address</label>
+                        <input type="text" id="urlInput" class="url-input" placeholder="Paste a URL or email address..." autocomplete="off" spellcheck="false">
                         <div class="absolute right-5 top-1/2 -translate-y-1/2 text-gray-600">
                             <i class="fa-solid fa-link text-sm"></i>
                         </div>
@@ -260,6 +261,26 @@
                             <p class="text-sm">No scans yet</p>
                             <p class="text-[11px] text-gray-600 mt-1">Analyze a URL and it will appear here</p>
                         </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── CAMPAIGNS ── -->
+            <section id="page-campaigns" class="hidden">
+                <div class="flex items-center justify-between mb-8">
+                    <div>
+                        <h1 class="text-3xl font-bold tracking-tight">Campaigns</h1>
+                        <p class="text-gray-500 text-sm mt-1">Detected phishing campaign clusters from scanned URLs</p>
+                    </div>
+                    <button class="text-sm text-gray-400 hover:text-white bg-white/[0.04] px-4 py-2 rounded-lg transition-colors" onclick="loadCampaigns()">
+                        <i class="fa-solid fa-arrows-rotate mr-1.5 text-xs"></i>Refresh
+                    </button>
+                </div>
+                <div class="card p-6" id="campaignsList">
+                    <div class="empty-state">
+                        <i class="fa-solid fa-bullseye"></i>
+                        <p class="text-sm">No campaigns loaded yet</p>
+                        <p class="text-[11px] text-gray-600 mt-1">Run a scan and open this page to load campaign clusters</p>
                     </div>
                 </div>
             </section>

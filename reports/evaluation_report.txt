@@ -3,37 +3,37 @@ PhishTrace — Model Evaluation Report
 ============================================================
 
 Best model  : Random Forest
-Test set    : 15,877 samples
+Test set    : 14,835 samples
 
-── Best Model Metrics ──────────────────────────────
-  Accuracy   : 0.9497
-  Precision  : 0.9720
-  Recall     : 0.9651
-  F1         : 0.9686
-  AUC        : 0.9817
-  FPR        : 0.1126
+-- Best Model Metrics ------------------------------
+  Accuracy   : 0.9943
+  Precision  : 0.9969
+  Recall     : 0.9965
+  F1         : 0.9967
+  AUC        : 0.9987
+  FPR        : 0.0190
 
-── Threshold Configuration ─────────────────────────
+-- Threshold Configuration -------------------------
   Dangerous  : score >= 0.75
   Suspicious : score >= 0.45
   Cost-optimal threshold: 0.05
   (FN cost=100, FP cost=1)
 
-── All Models Comparison ───────────────────────────
-  Logistic Regression     F1=0.8260  AUC=0.8891  FPR=0.1626
-  Random Forest           F1=0.9686  AUC=0.9817  FPR=0.1126
-  XGBoost                 F1=0.9601  AUC=0.9859  FPR=0.0751
+-- All Models Comparison ---------------------------
+  Logistic Regression     F1=0.8747  AUC=0.9505  FPR=0.1043
+  Random Forest           F1=0.9967  AUC=0.9987  FPR=0.0190
+  XGBoost                 F1=0.9949  AUC=0.9982  FPR=0.0300
 
-── Error Analysis Summary ──────────────────────────
-  False Positives analysed : 20
-  False Negatives analysed : 20
-  Details saved to         : reports/error_analysis.csv
+-- Error Analysis Summary --------------------------
+  False Positives : 20
+  False Negatives : 20
+  Details         : reports/error_analysis.csv
 
-── Figures Generated ───────────────────────────────
-  confusion_matrix_<model>.png  — per-model heatmap
-  roc_curves.png                — all models comparison
-  threshold_analysis.png        — P/R/F1 vs threshold
-  threshold_cost.png            — cost-based selection
-  feature_importance_best.png   — tree feature importances
+-- Figures Generated -------------------------------
+  confusion_matrix_<model>.png
+  roc_curves.png
+  threshold_analysis.png
+  threshold_cost.png
+  feature_importance_best.png
 
 ============================================================

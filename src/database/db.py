@@ -1,351 +1,232 @@
-"""
-PhishTrace — Database Layer
-============================
-SQLite database with 3 tables:
-  - scans      : every URL analysed, with features + SHAP stored as JSON
-  - campaigns  : phishing campaign clusters discovered by campaign.py
-  - model_metrics : latest evaluation results (seeded from evaluation_report.txt)
-
-Usage
------
-from database.db import init_db, save_scan, get_history, get_stats, get_campaigns
-
-init_db()                        # call once at app startup
-scan_id = save_scan(scan_dict)   # called inside /analyze
-stats   = get_stats()            # called inside /api/dashboard
-history = get_history(limit=50)  # called inside /api/history
-camps   = get_campaigns()        # called inside /api/campaigns
-"""
-
-import os
-import json
 import sqlite3
-import re
-from datetime import datetime, timedelta
-from contextlib import contextmanager
+import json
+import os
+import logging
+from datetime import datetime, timezone
 from pathlib import Path
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
-BASE_DIR          = Path(__file__).resolve().parent.parent.parent   # project root (above src/database/)
-DB_PATH           = BASE_DIR / "data" / "phishtrace.db"
-EVAL_REPORT_PATH  = BASE_DIR / "reports" / "evaluation_report.txt"
-EVAL_JSON_PATH    = BASE_DIR / "models"  / "evaluation_results.json"
+_DEFAULT_DB = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "data", "phishtrace.db")
+)
+DB_PATH = os.environ.get("PHISHTRACE_DB", _DEFAULT_DB)
+logger = logging.getLogger(__name__)
 
-# ── Schema ────────────────────────────────────────────────────────────────────
-SCHEMA = """
-PRAGMA journal_mode=WAL;
-PRAGMA foreign_keys=ON;
+_EVAL_PATH = Path(os.path.join(os.path.dirname(__file__), "..", "..", "models", "evaluation_results.json"))
+_model_metrics_cache: dict | None = None
 
-CREATE TABLE IF NOT EXISTS scans (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    url           TEXT    NOT NULL,
-    score         REAL    NOT NULL,
-    percent       REAL    NOT NULL,
-    verdict       TEXT    NOT NULL CHECK(verdict IN ('Safe','Suspicious','Dangerous')),
-    features_json TEXT    NOT NULL,
-    shap_json     TEXT    NOT NULL,
-    campaign_id   TEXT,
-    timestamp     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
-);
 
-CREATE TABLE IF NOT EXISTS campaigns (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    campaign_name TEXT    NOT NULL UNIQUE,
-    size          INTEGER NOT NULL DEFAULT 0,
-    centroid_json TEXT,
-    created_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
-);
+def _get_model_metrics() -> dict:
+    global _model_metrics_cache
+    if _model_metrics_cache is None:
+        if _EVAL_PATH.exists():
+            with open(_EVAL_PATH) as f:
+                _model_metrics_cache = _safe_json_loads(f.read(), {})
+        else:
+            _model_metrics_cache = {}
+    return _model_metrics_cache
 
-CREATE TABLE IF NOT EXISTS model_metrics (
-    id        INTEGER PRIMARY KEY CHECK(id = 1),
-    accuracy  REAL,
-    precision REAL,
-    recall    REAL,
-    f1        REAL,
-    auc       REAL,
-    fpr       REAL,
-    threshold_dangerous  REAL DEFAULT 0.75,
-    threshold_suspicious REAL DEFAULT 0.45,
-    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
-);
-"""
 
-# ── Connection context manager ────────────────────────────────────────────────
-@contextmanager
+def _safe_json_loads(value, default):
+    if value is None:
+        return default
+    try:
+        return json.loads(value)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return default
+
+
 def get_conn():
-    """Yield a SQLite connection and auto-commit / rollback."""
-    conn = sqlite3.connect(str(DB_PATH))
+    Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    return conn
 
 
-# ── Initialise ────────────────────────────────────────────────────────────────
-def init_db() -> None:
-    """
-    Create tables if they don't exist.
-    Also seeds model_metrics from evaluation_results.json or evaluation_report.txt.
-    """
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-
+def init_db():
     with get_conn() as conn:
-        conn.executescript(SCHEMA)
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS scans (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                url         TEXT    NOT NULL,
+                verdict     TEXT    NOT NULL,
+                score       REAL    NOT NULL,
+                raw_score   REAL    NOT NULL,
+                rule_alerts TEXT    DEFAULT '[]',
+                shap_reasons TEXT   DEFAULT '[]',
+                features    TEXT    DEFAULT '{}',
+                campaign_id TEXT    DEFAULT NULL,
+                scanned_at  TEXT    NOT NULL
+            );
 
-    _seed_metrics()
-    print(f"[DB] Initialised at {DB_PATH}")
+            CREATE TABLE IF NOT EXISTS campaigns (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                name        TEXT    NOT NULL,
+                scan_ids    TEXT    DEFAULT '[]',
+                created_at  TEXT    NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_scans_verdict
+                ON scans (verdict);
+
+            CREATE INDEX IF NOT EXISTS idx_scans_scanned_at
+                ON scans (scanned_at);
+        """)
+    logger.info("DB initialised at: %s", DB_PATH)
 
 
-def _seed_metrics() -> None:
-    """
-    Populate model_metrics table once from existing report files.
-    Priority: evaluation_results.json > evaluation_report.txt > defaults.
-    """
+def save_scan(url, verdict, score, raw_score,
+              rule_alerts=None, shap_reasons=None, features=None, campaign_id=None):
     with get_conn() as conn:
-        row = conn.execute("SELECT id FROM model_metrics WHERE id=1").fetchone()
-        if row:
-            return  # already seeded
-
-    metrics = _load_metrics_from_json() or _parse_metrics_from_txt() or _default_metrics()
-
-    with get_conn() as conn:
-        conn.execute("""
-            INSERT OR IGNORE INTO model_metrics
-                (id, accuracy, precision, recall, f1, auc, fpr, updated_at)
-            VALUES (1, :accuracy, :precision, :recall, :f1, :auc, :fpr,
-                    strftime('%Y-%m-%dT%H:%M:%SZ','now'))
-        """, metrics)
-
-    print(f"[DB] model_metrics seeded: F1={metrics.get('f1')}, AUC={metrics.get('auc')}")
-
-
-def _load_metrics_from_json() -> dict | None:
-    if not EVAL_JSON_PATH.exists():
-        return None
-    try:
-        with open(EVAL_JSON_PATH, encoding="utf-8") as f:
-            data = json.load(f)
-        return {
-            "accuracy" : data.get("accuracy",  0.0),
-            "precision": data.get("precision", 0.0),
-            "recall"   : data.get("recall",    0.0),
-            "f1"       : data.get("f1",        0.0),
-            "auc"      : data.get("auc",        0.0),
-            "fpr"      : data.get("fpr",        0.0),
-        }
-    except Exception as e:
-        print(f"[DB] Warning: could not read evaluation_results.json — {e}")
-        return None
-
-
-def _parse_metrics_from_txt() -> dict | None:
-    """
-    Parse numbers from evaluation_report.txt.
-    Looks for lines like:  accuracy : 0.9400
-    """
-    if not EVAL_REPORT_PATH.exists():
-        return None
-    try:
-        text = EVAL_REPORT_PATH.read_text(encoding="utf-8").lower()
-        def grab(key):
-            m = re.search(rf"{key}\s*[=:]\s*([\d.]+)", text)
-            return float(m.group(1)) if m else 0.0
-
-        return {
-            "accuracy" : grab("accuracy"),
-            "precision": grab("precision"),
-            "recall"   : grab("recall"),
-            "f1"       : grab("f1"),
-            "auc"      : grab("auc") or grab("roc"),
-            "fpr"      : grab("fpr") or grab("false positive rate"),
-        }
-    except Exception as e:
-        print(f"[DB] Warning: could not parse evaluation_report.txt — {e}")
-        return None
-
-
-def _default_metrics() -> dict:
-    return {
-        "accuracy": 0.94, "precision": 0.94,
-        "recall"  : 0.96, "f1": 0.9686,
-        "auc"     : 0.98, "fpr": 0.08,
-    }
-
-
-# ── Write ─────────────────────────────────────────────────────────────────────
-def save_scan(scan: dict) -> int:
-    """
-    Persist one scan result to the scans table.
-
-    Expected keys in `scan`:
-        url, score, percent, verdict, features (dict), reasons (list),
-        campaign_id (optional str)
-
-    Returns the new row id.
-    """
-    with get_conn() as conn:
-        cur = conn.execute("""
-            INSERT INTO scans
-                (url, score, percent, verdict, features_json, shap_json, campaign_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            scan["url"],
-            round(float(scan["score"]),   4),
-            round(float(scan["percent"]), 1),
-            scan["verdict"],
-            json.dumps(scan.get("features", {}), ensure_ascii=False),
-            json.dumps(scan.get("reasons",  []), ensure_ascii=False),
-            scan.get("campaign_id"),
-        ))
+        cur = conn.execute(
+            """INSERT INTO scans
+               (url, verdict, score, raw_score, rule_alerts, shap_reasons, features, campaign_id, scanned_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                url,
+                verdict,
+                round(score, 4),
+                round(raw_score, 4),
+                json.dumps(rule_alerts  or []),
+                json.dumps(shap_reasons or []),
+                json.dumps(features     or {}),
+                campaign_id,
+                datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+            )
+        )
         return cur.lastrowid
 
 
-def save_campaigns(campaign_list: list[dict]) -> None:
-    """
-    Bulk-upsert campaign rows.
-    Each dict needs: campaign_name (str), size (int), centroid_json (str, optional).
-    """
+def get_history(limit=50):
     with get_conn() as conn:
-        for c in campaign_list:
-            conn.execute("""
-                INSERT INTO campaigns (campaign_name, size, centroid_json)
-                VALUES (:campaign_name, :size, :centroid_json)
-                ON CONFLICT(campaign_name) DO UPDATE SET
-                    size         = excluded.size,
-                    centroid_json= excluded.centroid_json
-            """, {
-                "campaign_name": c["campaign_name"],
-                "size"         : c.get("size", 0),
-                "centroid_json": json.dumps(c.get("centroid", [])),
-            })
+        rows = conn.execute(
+            "SELECT * FROM scans ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+    result = []
+    for r in rows:
+        result.append({
+            "scan_id"     : r["id"],
+            "url"         : r["url"],
+            "verdict"     : r["verdict"],
+            "score"       : r["score"],
+            "raw_score"   : r["raw_score"],
+            "rule_alerts" : _safe_json_loads(r["rule_alerts"], []),
+            "shap_reasons": _safe_json_loads(r["shap_reasons"], []),
+            "campaign_id" : r["campaign_id"],
+            "scanned_at"  : r["scanned_at"],
+        })
+    return result
 
 
-# ── Read ──────────────────────────────────────────────────────────────────────
-def get_scan(scan_id: int) -> dict | None:
-    """Return a single scan by id, or None if not found."""
+def get_scan(scan_id):
     with get_conn() as conn:
-        row = conn.execute(
-            "SELECT * FROM scans WHERE id = ?", (scan_id,)
-        ).fetchone()
-    if not row:
+        row = conn.execute("SELECT * FROM scans WHERE id = ?", (scan_id,)).fetchone()
+    if row is None:
         return None
-    return _row_to_scan(row)
-
-
-def get_history(limit: int = 50, offset: int = 0) -> list[dict]:
-    """Return the most recent `limit` scans, newest first."""
-    with get_conn() as conn:
-        rows = conn.execute("""
-            SELECT * FROM scans
-            ORDER BY id DESC
-            LIMIT ? OFFSET ?
-        """, (limit, offset)).fetchall()
-    return [_row_to_scan(r) for r in rows]
-
-
-def get_stats() -> dict:
-    """
-    Return dashboard statistics:
-      - total_scans, dangerous, suspicious, safe counts
-      - model_metrics (from DB)
-      - timeline: daily scan counts for the last 7 days
-    """
-    with get_conn() as conn:
-        # Overall counts
-        counts = conn.execute("""
-            SELECT
-                COUNT(*) AS total,
-                SUM(verdict = 'Dangerous')  AS dangerous,
-                SUM(verdict = 'Suspicious') AS suspicious,
-                SUM(verdict = 'Safe')       AS safe
-            FROM scans
-        """).fetchone()
-
-        # Timeline — last 7 days
-        seven_days_ago = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
-        timeline_rows = conn.execute("""
-            SELECT
-                substr(timestamp, 1, 10) AS day,
-                COUNT(*)                 AS count
-            FROM scans
-            WHERE timestamp >= ?
-            GROUP BY day
-            ORDER BY day
-        """, (seven_days_ago,)).fetchall()
-
-        # Model metrics
-        metrics_row = conn.execute(
-            "SELECT * FROM model_metrics WHERE id = 1"
-        ).fetchone()
-
-    model_metrics = {}
-    if metrics_row:
-        model_metrics = {
-            "accuracy" : metrics_row["accuracy"],
-            "precision": metrics_row["precision"],
-            "recall"   : metrics_row["recall"],
-            "f1"       : metrics_row["f1"],
-            "auc"      : metrics_row["auc"],
-            "fpr"      : metrics_row["fpr"],
-        }
-
     return {
-        "total_scans": counts["total"]     or 0,
-        "dangerous"  : counts["dangerous"] or 0,
-        "suspicious" : counts["suspicious"]or 0,
-        "safe"       : counts["safe"]      or 0,
-        "model_metrics": model_metrics,
-        "timeline"   : [{"day": r["day"], "count": r["count"]} for r in timeline_rows],
+        "id"          : row["id"],
+        "url"         : row["url"],
+        "verdict"     : row["verdict"],
+        "score"       : row["score"],
+        "raw_score"   : row["raw_score"],
+        "rule_alerts" : _safe_json_loads(row["rule_alerts"], []),
+        "shap_reasons": _safe_json_loads(row["shap_reasons"], []),
+        "campaign_id" : row["campaign_id"],
+        "scanned_at"  : row["scanned_at"],
     }
 
 
-def get_campaigns() -> list[dict]:
-    """Return all known campaigns, largest first."""
+def get_stats():
+    """Backwards-compatible alias: dashboard stats are the single source."""
+    return get_dashboard_stats()
+
+
+def get_dashboard_stats():
     with get_conn() as conn:
-        rows = conn.execute("""
-            SELECT campaign_name, size, centroid_json, created_at
-            FROM campaigns
-            ORDER BY size DESC
-        """).fetchall()
-    return [
-        {
-            "campaign_name": r["campaign_name"],
-            "size"         : r["size"],
-            "centroid"     : json.loads(r["centroid_json"] or "[]"),
-            "created_at"   : r["created_at"],
-        }
-        for r in rows
-    ]
+        total     = conn.execute("SELECT COUNT(*) FROM scans").fetchone()[0]
+        dangerous = conn.execute("SELECT COUNT(*) FROM scans WHERE verdict='Dangerous'").fetchone()[0]
+        suspicious= conn.execute("SELECT COUNT(*) FROM scans WHERE verdict='Suspicious'").fetchone()[0]
+        safe      = conn.execute("SELECT COUNT(*) FROM scans WHERE verdict='Safe'").fetchone()[0]
 
+        timeline_rows = conn.execute(
+            "SELECT verdict, scanned_at FROM scans ORDER BY id DESC LIMIT 10"
+        ).fetchall()
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-def _row_to_scan(row: sqlite3.Row) -> dict:
+    timeline = [{"verdict": r["verdict"], "time": r["scanned_at"]} for r in timeline_rows]
     return {
-        "id"         : row["id"],
-        "url"        : row["url"],
-        "score"      : row["score"],
-        "percent"    : row["percent"],
-        "verdict"    : row["verdict"],
-        "features"   : json.loads(row["features_json"] or "{}"),
-        "reasons"    : json.loads(row["shap_json"]     or "[]"),
-        "campaign_id": row["campaign_id"],
-        "timestamp"  : row["timestamp"],
+        "total_scans": total,
+        "dangerous"  : dangerous,
+        "suspicious" : suspicious,
+        "safe"       : safe,
+        "timeline"   : timeline,
+        "model_metrics": _get_model_metrics(),
     }
 
 
-# ── CLI helper ────────────────────────────────────────────────────────────────
-if __name__ == "__main__":
-    init_db()
-    stats = get_stats()
-    print("\n── Dashboard Stats ──────────────────────")
-    print(f"  Total scans : {stats['total_scans']}")
-    print(f"  Dangerous   : {stats['dangerous']}")
-    print(f"  Suspicious  : {stats['suspicious']}")
-    print(f"  Safe        : {stats['safe']}")
-    print(f"  Model F1    : {stats['model_metrics'].get('f1', 'N/A')}")
-    print("─────────────────────────────────────────\n")
+def get_campaigns():
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM campaigns ORDER BY id DESC"
+        ).fetchall()
+        result = []
+        for r in rows:
+            scan_id_rows = conn.execute(
+                "SELECT id FROM scans WHERE campaign_id = ?", (r["name"],)
+            ).fetchall()
+            result.append({
+                "id"        : r["id"],
+                "name"      : r["name"],
+                "scan_ids"  : [s["id"] for s in scan_id_rows],
+                "created_at": r["created_at"],
+            })
+    return result
+
+
+def save_campaigns(campaign_list):
+    """Replace all campaigns — clustering always rebuilds from scratch."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    with get_conn() as conn:
+        conn.execute("DELETE FROM campaigns")
+        conn.executemany(
+            "INSERT INTO campaigns (name, scan_ids, created_at) VALUES (?, ?, ?)",
+            [
+                (
+                    c["campaign_name"],
+                    json.dumps(c.get("scan_ids", []) if isinstance(c.get("scan_ids", []), list) else []),
+                    now,
+                )
+                for c in campaign_list
+            ]
+        )
+    logger.info("[DB] Saved %s campaigns.", len(campaign_list))
+
+
+def get_phishing_scan_count() -> int:
+    """Count of scans with a phishing verdict."""
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT COUNT(*) FROM scans WHERE verdict IN ('Dangerous', 'Suspicious')"
+        ).fetchone()[0]
+
+
+def get_phishing_scans_with_features() -> list:
+    """Return [{id, features}] for all phishing scans that have stored features."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, features FROM scans WHERE verdict IN ('Dangerous', 'Suspicious')"
+        ).fetchall()
+    result = []
+    for r in rows:
+        feats = _safe_json_loads(r["features"], {})
+        if feats:
+            result.append({"id": r["id"], "features": feats})
+    return result
+
+
+def update_scan_campaigns(assignments: list) -> None:
+    """Batch-update campaign_id for a list of (campaign_id, scan_id) pairs."""
+    with get_conn() as conn:
+        conn.executemany(
+            "UPDATE scans SET campaign_id = ? WHERE id = ?",
+            assignments,
+        )
+    logger.info("[DB] Updated campaign_id for %d scans.", len(assignments))
