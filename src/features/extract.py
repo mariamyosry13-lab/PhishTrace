@@ -1,6 +1,7 @@
 import re
 import math
 import pandas as pd
+from pathlib import Path
 from urllib.parse import urlparse
 
 SUSPICIOUS_WORDS = [
@@ -165,7 +166,8 @@ def build_feature_matrix(csv_path: str, out_path: str):
     return features
 
 if __name__ == "__main__":
+    _ROOT = Path(__file__).resolve().parent.parent.parent
     build_feature_matrix(
-        "data/processed/phishtrace_dataset.csv",
-        "data/processed/phishtrace_features.csv"
+        str(_ROOT / "data" / "processed" / "phishtrace_dataset.csv"),
+        str(_ROOT / "data" / "processed" / "phishtrace_features.csv"),
     )

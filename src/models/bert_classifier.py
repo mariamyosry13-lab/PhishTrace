@@ -1,6 +1,3 @@
-"""Optional BERT phishing classifier (40% weight in the ensemble).  Returns None
-when unavailable so callers always get a result.  Model: ealvaradob/bert-finetuned-phishing."""
-
 from __future__ import annotations
 
 import logging

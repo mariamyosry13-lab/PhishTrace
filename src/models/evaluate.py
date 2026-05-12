@@ -114,7 +114,7 @@ def main():
     X_test = scaler.transform(X_test_raw)
 
 
-    print("\n── Per-model evaluation ─────────────────────────────────────────────────")
+    print("\n-- Per-model evaluation -------------------------------------------------")
     all_results = {}
     all_fpr_tpr = {}
 
@@ -183,7 +183,7 @@ def main():
         raise SystemExit(1)
 
 
-    print("\n── ROC curves ───────────────────────────────────────────────────────────")
+    print("\n-- ROC curves -----------------------------------------------------------")
     fig, ax = plt.subplots(figsize=(7, 5))
     n_curves = len(all_fpr_tpr)
     colors = sns.color_palette("husl", n_colors=max(n_curves, 1))
@@ -206,7 +206,7 @@ def main():
     print("  Saved roc_curves.png")
 
 
-    print("\n── Threshold analysis ───────────────────────────────────────────────────")
+    print("\n-- Threshold analysis ---------------------------------------------------")
     best_model  = joblib.load(MODELS_DIR / "best_model.pkl")
     y_prob_best = best_model.predict_proba(X_test)[:, 1]
 
@@ -243,7 +243,7 @@ def main():
     print("  Saved threshold_analysis.png")
 
 
-    print("\n── Cost-based threshold ─────────────────────────────────────────────────")
+    print("\n-- Cost-based threshold -------------------------------------------------")
     FN_COST = 100
     FP_COST = 1
 
@@ -279,7 +279,7 @@ def main():
     print("  Saved threshold_cost.png")
 
 
-    print("\n── Feature importance ───────────────────────────────────────────────────")
+    print("\n-- Feature importance ---------------------------------------------------")
     try:
         importances = best_model.feature_importances_
         sorted_idx  = np.argsort(importances)
@@ -299,7 +299,7 @@ def main():
         print("  [skip] Best model has no feature_importances_")
 
 
-    print("\n── Error analysis ───────────────────────────────────────────────────────")
+    print("\n-- Error analysis -------------------------------------------------------")
     y_pred_best = best_model.predict(X_test)
 
     fp_idx    = np.where((y_pred_best == 1) & (y_test == 0))[0][:20]
@@ -377,7 +377,7 @@ def main():
     )
     best_metrics = all_results[best_model_name]
 
-    print("\n── Saving results JSON ──────────────────────────────────────────────────")
+    print("\n-- Saving results JSON --------------------------------------------------")
     model_stem = Path(MODEL_FILES[best_model_name]).stem
     results_json = {
         "model"    : model_stem,
@@ -397,7 +397,7 @@ def main():
     print("  Saved evaluation_results.json")
 
 
-    print("\n── Writing evaluation_report.txt ────────────────────────────────────────")
+    print("\n-- Writing evaluation_report.txt ----------------------------------------")
     lines = [
         "=" * 60,
         "PhishTrace — Model Evaluation Report",
@@ -406,7 +406,7 @@ def main():
         f"Best model  : {best_model_name}",
         f"Test set    : {len(y_test):,} samples",
         "",
-        "── Best Model Metrics ──────────────────────────────",
+        "-- Best Model Metrics ------------------------------",
         f"  Accuracy   : {best_metrics['accuracy']:.4f}",
         f"  Precision  : {best_metrics['precision']:.4f}",
         f"  Recall     : {best_metrics['recall']:.4f}",
@@ -414,25 +414,25 @@ def main():
         f"  AUC        : {best_metrics['auc']:.4f}",
         f"  FPR        : {best_metrics['fpr']:.4f}",
         "",
-        "── Threshold Configuration ─────────────────────────",
+        "-- Threshold Configuration -------------------------",
         f"  Dangerous  : score >= {THRESHOLD_DANGEROUS}",
         f"  Suspicious : score >= {THRESHOLD_SUSPICIOUS}",
         f"  Cost-optimal threshold: {best_t_cost:.2f}",
         f"  (FN cost={FN_COST}, FP cost={FP_COST})",
         "",
-        "── All Models Comparison ───────────────────────────",
+        "-- All Models Comparison ---------------------------",
     ]
     for name, m in all_results.items():
         lines.append(f"  {name:<22}  F1={m['f1']:.4f}  AUC={m['auc']:.4f}  FPR={m['fpr']:.4f}")
 
     lines += [
         "",
-        "── Error Analysis Summary ──────────────────────────",
+        "-- Error Analysis Summary --------------------------",
         f"  False Positives : {len(fp_idx)}",
         f"  False Negatives : {len(fn_idx)}",
         f"  Details         : reports/error_analysis.csv",
         "",
-        "── Figures Generated ───────────────────────────────",
+        "-- Figures Generated -------------------------------",
         "  confusion_matrix_<model>.png",
         "  roc_curves.png",
         "  threshold_analysis.png",

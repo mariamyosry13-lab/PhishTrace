@@ -1,5 +1,3 @@
-"""SQLite persistence layer for scan results and campaigns."""
-
 import sqlite3
 import json
 import os

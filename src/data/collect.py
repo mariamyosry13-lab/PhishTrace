@@ -608,7 +608,7 @@ def load_verified_online(path: Path) -> pd.Series:
 
 def build_dataset() -> pd.DataFrame:
     """Merge all raw sources into one labelled DataFrame (label=1 phishing, 0 legit)."""
-    print("── Building dataset ──────────────────────────────────────────────────")
+    print("-- Building dataset ------------------------------------------------------------------")
     phishing_urls  = []
     legit_urls     = []
 
@@ -697,7 +697,7 @@ def print_stats(df: pd.DataFrame) -> None:
     legit   = (df["label"] == 0).sum()
     avg_len = df["url"].str.len().mean()
 
-    print("\n── Dataset Statistics ────────────────────────────────────────────────")
+    print("\n-- Dataset Statistics ----------------------------------------------------------------")
     print(f"  Total URLs : {total:>8,}")
     print(f"  Phishing   : {phish:>8,}  ({phish/total:.1%})")
     print(f"  Legitimate : {legit:>8,}  ({legit/total:.1%})")
@@ -715,7 +715,7 @@ def print_stats(df: pd.DataFrame) -> None:
     print("\n  Top TLDs in phishing URLs:")
     for tld, cnt in tlds.items():
         print(f"    .{tld:<8} {cnt:>6,}")
-    print("──────────────────────────────────────────────────────────────────────")
+    print("------------------------------------------------------------------------------")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="PhishTrace data pipeline")
