@@ -1,28 +1,39 @@
-==================================================
-PhishTrace — SHAP Feature Importance Report
-==================================================
+============================================================
+PhishTrace — Model Evaluation Report
+============================================================
 
- 1. path_length               mean|SHAP| = 0.2554
- 2. url_length                mean|SHAP| = 0.0753
- 3. num_dots                  mean|SHAP| = 0.0486
- 4. hostname_length           mean|SHAP| = 0.0421
- 5. num_digits_in_path        mean|SHAP| = 0.0354
- 6. num_subdomains            mean|SHAP| = 0.0306
- 7. has_https                 mean|SHAP| = 0.0205
- 8. num_hyphens               mean|SHAP| = 0.0113
- 9. num_digits_in_domain      mean|SHAP| = 0.0093
-10. num_slashes               mean|SHAP| = 0.0088
-11. num_question              mean|SHAP| = 0.0078
-12. num_equals                mean|SHAP| = 0.0051
-13. num_underscores           mean|SHAP| = 0.0021
-14. last_path_segment_is_integer mean|SHAP| = 0.0018
-15. num_suspicious_words      mean|SHAP| = 0.0012
-16. num_at                    mean|SHAP| = 0.0001
-17. num_percent               mean|SHAP| = 0.0001
-18. double_slash              mean|SHAP| = 0.0000
-19. has_ip                    mean|SHAP| = 0.0000
+Best model  : Random Forest
+Test set    : 14,835 samples
 
-Figures saved:
-  - C:\Users\LOQ\PhishTrace\reports\figures\shap_bar.png
-  - C:\Users\LOQ\PhishTrace\reports\figures\shap_summary.png
-  - C:\Users\LOQ\PhishTrace\reports\figures\shap_waterfall_sample.png
+-- Best Model Metrics ------------------------------
+  Accuracy   : 0.9943
+  Precision  : 0.9969
+  Recall     : 0.9965
+  F1         : 0.9967
+  AUC        : 0.9987
+  FPR        : 0.0190
+
+-- Threshold Configuration -------------------------
+  Dangerous  : score >= 0.75
+  Suspicious : score >= 0.45
+  Cost-optimal threshold: 0.05
+  (FN cost=100, FP cost=1)
+
+-- All Models Comparison ---------------------------
+  Logistic Regression     F1=0.8747  AUC=0.9505  FPR=0.1043
+  Random Forest           F1=0.9967  AUC=0.9987  FPR=0.0190
+  XGBoost                 F1=0.9949  AUC=0.9982  FPR=0.0300
+
+-- Error Analysis Summary --------------------------
+  False Positives : 20
+  False Negatives : 20
+  Details         : reports/error_analysis.csv
+
+-- Figures Generated -------------------------------
+  confusion_matrix_<model>.png
+  roc_curves.png
+  threshold_analysis.png
+  threshold_cost.png
+  feature_importance_best.png
+
+============================================================

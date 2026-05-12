@@ -1,0 +1,28 @@
+==================================================
+PhishTrace — SHAP Feature Importance Report
+==================================================
+
+ 1. path_length               mean|SHAP| = 0.2550
+ 2. url_length                mean|SHAP| = 0.0759
+ 3. num_dots                  mean|SHAP| = 0.0477
+ 4. hostname_length           mean|SHAP| = 0.0418
+ 5. num_digits_in_path        mean|SHAP| = 0.0350
+ 6. num_subdomains            mean|SHAP| = 0.0310
+ 7. has_https                 mean|SHAP| = 0.0204
+ 8. num_hyphens               mean|SHAP| = 0.0112
+ 9. num_digits_in_domain      mean|SHAP| = 0.0095
+10. num_slashes               mean|SHAP| = 0.0092
+11. num_question              mean|SHAP| = 0.0081
+12. num_equals                mean|SHAP| = 0.0047
+13. num_underscores           mean|SHAP| = 0.0020
+14. last_path_segment_is_integer mean|SHAP| = 0.0017
+15. num_suspicious_words      mean|SHAP| = 0.0012
+16. num_at                    mean|SHAP| = 0.0001
+17. num_percent               mean|SHAP| = 0.0000
+18. double_slash              mean|SHAP| = 0.0000
+19. has_ip                    mean|SHAP| = 0.0000
+
+Figures saved:
+  - C:\Users\LOQ\PhishTrace\reports\figures\shap_bar.png
+  - C:\Users\LOQ\PhishTrace\reports\figures\shap_summary.png
+  - C:\Users\LOQ\PhishTrace\reports\figures\shap_waterfall_sample.png
