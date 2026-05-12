@@ -166,6 +166,6 @@ if __name__ == "__main__":
         for item in report:
             flag = " [EXTRA]" if item["is_extra"] else ""
             val  = item["value"]
-            mark = " ⚠" if (isinstance(val, int) and val == 1
+            mark = " [!]" if (isinstance(val, int) and val == 1
                              and item["feature"] not in ("has_https",)) else ""
             print(f"  {item['feature']:<25} = {val}{mark}{flag}")

@@ -120,32 +120,32 @@ def rule_based_boost(feats: dict, raw_score: float) -> tuple[float, list[str]]:
     lev = feats.get("min_levenshtein", 99)
     if feats.get("is_typosquat", 0):
         boost += 0.15
-        rules.append(f"⚠️ Typosquatting: الدومين شبيه جداً لدومين مشهور (Levenshtein={lev})")
+        rules.append(f"Typosquatting: domain is very similar to a well-known domain (Levenshtein={lev})")
 
     if feats.get("has_ip", 0):
         boost += 0.15
-        rules.append("⚠️ الرابط بيستخدم IP بدل اسم دومين — علامة خطر قوية")
+        rules.append("URL uses an IP address instead of a domain name — strong danger signal")
 
     if feats.get("brand_in_subdomain", 0):
         boost += 0.15
-        rules.append("⚠️ اسم علامة تجارية موجود في الـ subdomain — انتبه")
+        rules.append("Brand name found in subdomain — be cautious")
 
     if feats.get("tld_suspicious", 0):
         boost += 0.10
-        rules.append("⚠️ الـ TLD مشبوه (.tk / .xyz / .click ...)")
+        rules.append("Suspicious TLD (.tk / .xyz / .click ...)")
 
     if feats.get("has_at_in_url", 0):
         boost += 0.10
-        rules.append("⚠️ وجود @ في الرابط — تقنية تضليل شائعة")
+        rules.append("@ symbol in URL — common misdirection technique")
 
     if feats.get("num_subdomains", 0) > 3:
         boost += 0.05
-        rules.append(f"⚠️ عدد subdomains كبير ({feats['num_subdomains']})")
+        rules.append(f"Excessive subdomain count ({feats['num_subdomains']})")
 
     entropy = feats.get("hostname_entropy", 0)
     if entropy > 4.0:
         boost += 0.05
-        rules.append(f"⚠️ الـ hostname يبدو عشوائي (entropy={entropy:.2f})")
+        rules.append(f"Hostname appears random (entropy={entropy:.2f})")
 
     boost = min(boost, 0.30)
     # Cap to Suspicious when the ML fires on structural signals alone.

@@ -447,7 +447,7 @@ def main():
         f.write("\n".join(lines))
 
     print("\n".join(lines))
-    print("\n✅ Evaluation complete!")
+    print("\nEvaluation complete!")
 
 
 if __name__ == "__main__":

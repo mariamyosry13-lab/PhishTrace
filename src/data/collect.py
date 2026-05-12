@@ -1,8 +1,3 @@
-"""Merges raw phishing and legitimate URL datasets into data/processed/phishtrace_dataset.csv.
-
-Run with --refresh to pull fresh URLs from PhishTank before merging.
-"""
-
 import os
 import sys
 import argparse
@@ -745,5 +740,5 @@ if __name__ == "__main__":
     df.to_csv(DATASET_OUT, index=False)
     print(f"\nSaved → {DATASET_OUT}")
     print_stats(df)
-    print("\n✅ Data collection complete!")
+    print("\nData collection complete!")
     print("   Next step: python src/features/extract.py")
